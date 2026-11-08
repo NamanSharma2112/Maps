@@ -27,6 +27,8 @@ export {
   DayNightWorldMap,
   MercatorWorldMap,
 } from "./components/presets";
+export { VideoMap } from "./components/VideoMap";
+export type { VideoMapProps, VideoMapHandle, VideoStop, VideoAspect } from "./components/VideoMap";
 export { MapLegend } from "./components/MapLegend";
 export type { MapLegendProps } from "./components/MapLegend";
 export { MapControls } from "./components/MapControls";

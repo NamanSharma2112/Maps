@@ -315,3 +315,15 @@ h2 {
 .gallery__card figcaption span { font-size: 12px; color: var(--mr-muted); }
 @media (max-width: 900px) { .gallery--globes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .gallery--maps { grid-template-columns: minmax(0, 1fr); } }
+
+/* ── video ────────────────────────────────────────────────── */
+.video-stage { border-radius: 8px; overflow: hidden; box-shadow: 0 0 0 1px var(--mr-border), 0 8px 24px -12px oklch(0 0 0 / 0.25); }
+.video-stage--16x9 { max-width: 720px; }
+.video-stage--9x16 { max-width: 300px; }
+.video-stage--1x1 { max-width: 460px; }
+.video-stage--4x5 { max-width: 400px; }
+.video-stage.is-checker {
+  background: repeating-conic-gradient(var(--mr-surface-muted) 0 25%, var(--mr-background) 0 50%) 0 0 / 16px 16px;
+}
+.chip--primary { background: var(--mr-foreground); color: var(--mr-background); border-color: var(--mr-foreground); }
+.chip--primary:hover { background: var(--mr-foreground); opacity: 0.88; }

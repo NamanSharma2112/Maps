@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   ContinentMap,
@@ -15,11 +15,12 @@ import {
   OutlineWorldMap,
   DayNightWorldMap,
   MercatorWorldMap,
+  VideoMap,
   CONTINENTS,
   formatCompact,
   formatNumber,
 } from "../lib";
-import type { Continent, LatLng, Region } from "../lib";
+import type { Continent, LatLng, Region, VideoAspect, VideoMapHandle, VideoStop } from "../lib";
 import { CITIES, HUB_ARCS, HUB_MARKERS, INDIA_CITIES, INDIA_POPULATION_2011, WORLD_POPULATION } from "./data";
 import { Code, CopyButton } from "./Code";
 
@@ -514,12 +515,136 @@ function GallerySection() {
   );
 }
 
+
+const STORIES: Record<string, { title: string; subtitle: string; stops: VideoStop[] }> = {
+  trip: {
+    title: "Delhi to New York",
+    subtitle: "Via London",
+    stops: [
+      { country: "India", at: CITIES.delhi, label: "New Delhi, India" },
+      { country: "United Kingdom", at: CITIES.london, label: "London, UK" },
+      { country: "United States of America", at: CITIES.newYork, label: "New York, USA" },
+    ],
+  },
+  asia: {
+    title: "Asia in 60 seconds",
+    subtitle: "Five countries, one route",
+    stops: [{ country: "India" }, { country: "Thailand" }, { country: "Vietnam" }, { country: "China" }, { country: "Japan" }],
+  },
+  europe: {
+    title: "Interrail summer",
+    subtitle: "Paris → Rome",
+    stops: [{ country: "France" }, { country: "Switzerland" }, { country: "Austria" }, { country: "Italy" }],
+  },
+};
+
+function save(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function VideoSection() {
+  const [aspect, setAspect] = useState<VideoAspect>("16:9");
+  const [bg, setBg] = useState<"theme" | "green" | "transparent">("theme");
+  const [variant, setVariant] = useState<"solid" | "dots">("solid");
+  const [story, setStory] = useState<keyof typeof STORIES>("trip");
+  const [status, setStatus] = useState("");
+  const map = useRef<VideoMapHandle>(null);
+  const s = STORIES[story];
+
+  const record = async () => {
+    if (!map.current) return;
+    setStatus(`Recording ${Math.round(map.current.duration)} s…`);
+    try {
+      const blob = await map.current.record();
+      save(blob, `map-${story}-${aspect.replace(":", "x")}.${blob.type.includes("mp4") ? "mp4" : "webm"}`);
+      setStatus("Saved the video. If no file appeared, this page cannot download — run the docs locally or on your own deployment.");
+    } catch (e) {
+      setStatus((e as Error).message);
+    }
+  };
+  const frame = async () => {
+    const blob = await map.current?.snapshot();
+    if (blob) { save(blob, `map-${story}-${aspect.replace(":", "x")}.png`); setStatus("Saved a PNG frame."); }
+  };
+
+  const code = `import { VideoMap } from "meridian-ui";
+
+const ref = useRef<VideoMapHandle>(null);
+
+<VideoMap
+  ref={ref}
+  aspect="${aspect}"            // 16:9 YouTube · 9:16 Reels/Shorts · 1:1 · 4:5
+  resolution={1080}
+  background="${bg}"       // theme · green (chroma key) · transparent
+  variant="${variant}"
+  title="${s.title}"
+  stops={[
+${s.stops.map((x) => `    { country: "${x.country}"${x.label ? `, label: "${x.label}"` : ""} },`).join("\n")}
+  ]}
+/>
+
+const video = await ref.current.record();   // WebM (MP4 on Safari), full timeline
+const png = await ref.current.snapshot();   // current frame`;
+
+  return (
+    <Section id="video-map" title="Video map" badge="For creators" lead="An animated route map sized for YouTube, Reels and Shorts. The camera flies country to country while the route draws. Export the whole run as a video, or grab a frame as a PNG. Use the green background to key it into your edit, or a transparent one to drop it straight in.">
+      <Preview
+        code={code}
+        toolbar={
+          <>
+            <Segmented label="Story" value={story} onChange={setStory} options={[{ value: "trip", label: "Trip" }, { value: "asia", label: "Asia" }, { value: "europe", label: "Europe" }]} />
+            <Segmented label="Frame" value={aspect} onChange={setAspect} options={[{ value: "16:9", label: "16:9" }, { value: "9:16", label: "9:16" }, { value: "1:1", label: "1:1" }, { value: "4:5", label: "4:5" }]} />
+            <Segmented label="Background" value={bg} onChange={setBg} options={[{ value: "theme", label: "Theme" }, { value: "green", label: "Green" }, { value: "transparent", label: "Clear" }]} />
+            <Segmented label="Land style" value={variant} onChange={setVariant} options={[{ value: "solid", label: "Solid" }, { value: "dots", label: "Dots" }]} />
+          </>
+        }
+        footer={
+          <div className="preview__foot">
+            <div className="chips">
+              <button type="button" className="chip" onClick={() => map.current?.replay()}>Replay</button>
+              <button type="button" className="chip chip--primary" onClick={record}>Record video</button>
+              <button type="button" className="chip" onClick={frame}>Save frame</button>
+            </div>
+            <span className="muted" aria-live="polite">{status || "1080p output. Recording plays the route once in real time."}</span>
+          </div>
+        }
+      >
+        <div className={`video-stage video-stage--${aspect.replace(":", "x")}${bg === "transparent" ? " is-checker" : ""}`}>
+          <VideoMap ref={map} key={`${story}-${aspect}-${variant}`} aspect={aspect} background={bg} variant={variant} stops={s.stops} title={s.title} subtitle={s.subtitle} />
+        </div>
+      </Preview>
+      <PropsTable
+        rows={[
+          ["stops", "VideoStop[]", "—", "{ country?, at?, zoom?, label? } — the camera frames each in turn."],
+          ["aspect", '"16:9" | "9:16" | "1:1" | "4:5"', '"16:9"', "Frame shape for YouTube, Reels / Shorts / TikTok, or feed posts."],
+          ["resolution", "number", "1080", "Pixels on the short side of the exported frame."],
+          ["background", '"theme" | "green" | "transparent" | color', '"theme"', "Green is chroma-key #00b140; transparent keeps alpha in PNG and WebM."],
+          ["variant", '"solid" | "dots"', '"solid"', "Land style."],
+          ["route", "boolean", "true", "Dashed travelling route between stops."],
+          ["flight / hold", "number", "1.6 / 1.4", "Seconds flying between stops and holding on each."],
+          ["title / subtitle", "string", "—", "Text in the top-left corner."],
+          ["ref.record()", "() => Promise<Blob>", "—", "Plays the timeline once and returns the video."],
+          ["ref.snapshot()", "() => Promise<Blob>", "—", "The current frame as PNG."],
+        ]}
+      />
+    </Section>
+  );
+}
+
 /* ── page ───────────────────────────────────────────────────── */
 
 const NAV = [
   { id: "globe", label: "Globe" },
   { id: "world-map", label: "World map" },
   { id: "gallery", label: "Styles gallery" },
+  { id: "video-map", label: "Video map" },
   { id: "india-map", label: "India map" },
   { id: "continent-map", label: "Continent maps" },
   { id: "legend-controls", label: "Legend and controls" },
@@ -606,6 +731,7 @@ export default function App() {
             <GlobeSection />
             <WorldSection />
             <GallerySection />
+            <VideoSection />
             <IndiaSection />
             <ContinentSection />
             <PartsSection />
