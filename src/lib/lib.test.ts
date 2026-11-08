@@ -33,6 +33,32 @@ describe("world data", () => {
   });
 });
 
+describe("India on its official boundary in world data", () => {
+  const c = getCountryRegions();
+  const at = (lng: number, lat: number) => c[locate(c, lng, lat)]?.name;
+  it.each([
+    ["Muzaffarabad", 73.47, 34.37],
+    ["Gilgit", 74.31, 35.92],
+    ["Skardu", 75.63, 35.3],
+    ["Aksai Chin", 79.5, 35.2],
+    ["Shaksgam Valley", 76.5, 36.0],
+    ["Tawang", 91.86, 27.59],
+    ["Bhuj, Kutch", 69.67, 23.25],
+    ["Leh", 77.58, 34.15],
+  ])("%s is in India", (_, lng, lat) => expect(at(lng, lat)).toBe("India"));
+  it("leaves neighbours in place", () => {
+    expect(at(67.0, 24.86)).toBe("Pakistan"); // Karachi
+    expect(at(74.34, 31.52)).toBe("Pakistan"); // Lahore
+    expect(at(87.62, 43.83)).toBe("China"); // Ürümqi
+    expect(at(85.32, 27.72)).toBe("Nepal"); // Kathmandu
+  });
+  it("matches the IndiaMap outline exactly", () => {
+    const india = c.find((r) => r.name === "India")!;
+    const statesArea = getIndiaStates().reduce((a, s) => a + geoArea(s.geometry), 0);
+    expect(Math.abs(geoArea(india.geometry) - statesArea) / statesArea).toBeLessThan(0.0005);
+  });
+});
+
 describe("geo utils", () => {
   it("measures great-circle distance", () => {
     const d = distanceKm({ lat: 40.6413, lng: -73.7781 }, { lat: 51.47, lng: -0.4543 }); // JFK → LHR

@@ -104,6 +104,7 @@ npm run build      # library (dist/) + docs site (dist-demo/)
 ## Data
 
 - Countries and land: [Natural Earth](https://www.naturalearthdata.com/) 1:110m via [world-atlas](https://github.com/topojson/world-atlas). Public domain.
+- **India is drawn on its official boundary in every component** (`Globe`, `WorldMap`, `ContinentMap`, `IndiaMap`): all of Jammu & Kashmir and Ladakh, including PoK, Gilgit-Baltistan, Aksai Chin and the Shaksgam Valley, plus Arunachal Pradesh, as depicted by the Survey of India. `scripts/build-world.mjs` replaces Natural Earth's India with the outline of the 36 states and union territories and trims neighbouring countries to fit around it; tests check the disputed areas fall inside India.
 - Indian states and union territories: [DataMeet India community](https://github.com/datameet/maps) "Admin2", simplified. [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). `IndiaMap` shows this credit by default.
 
 ## License

@@ -3,6 +3,8 @@ import type { GeometryCollection, Topology } from "topojson-specification";
 import { feature, mesh } from "topojson-client";
 import { geoBounds, geoContains } from "d3-geo";
 import countriesTopo from "world-atlas/countries-110m.json";
+// India on its official boundary, and its neighbours trimmed to fit (scripts/build-world.mjs)
+import southAsiaTopo from "./south-asia.topo.json";
 import landTopo from "world-atlas/land-110m.json";
 import type { RegionFeature } from "./regions";
 
@@ -19,17 +21,35 @@ interface World {
 
 let world: World | null = null;
 
-/** Natural Earth 1:110m land, countries and internal borders (parsed once, cached). */
+/**
+ * Natural Earth 1:110m land, countries and internal borders (parsed once, cached).
+ * India and its neighbours come from south-asia.topo.json, so India is always drawn on
+ * its official boundary; every other country is Natural Earth unchanged.
+ */
 export function getWorld(): World {
   if (world) return world;
-  const ct = countriesTopo as unknown as Topology<{ countries: GeometryCollection<CountryProperties> }>;
+  type Countries = Topology<{ countries: GeometryCollection<CountryProperties> }>;
+  const ct = countriesTopo as unknown as Countries;
+  const sa = southAsiaTopo as unknown as Countries;
   const lt = landTopo as unknown as Topology<{ land: GeometryCollection }>;
-  const countries = (feature(ct, ct.objects.countries) as unknown as FeatureCollection<Polygon | MultiPolygon, CountryProperties>)
-    .features.map((f) => ({ ...f, id: String(f.id ?? f.properties.name) })) as CountryFeature[];
+  const toFeatures = (t: Countries) =>
+    (feature(t, t.objects.countries) as unknown as FeatureCollection<Polygon | MultiPolygon, CountryProperties>).features.map(
+      (f) => ({ ...f, id: String(f.id ?? f.properties.name) }),
+    ) as CountryFeature[];
+
+  const official = toFeatures(sa);
+  const replaced = new Set(official.map((f) => f.properties.name));
+  const countries = toFeatures(ct)
+    .map((f) => official.find((o) => o.properties.name === f.properties.name) ?? f)
+    .filter((f, i, all) => all.indexOf(f) === i);
+
+  const inSA = (g: { properties?: object | null }) => replaced.has((g.properties as Partial<CountryProperties> | undefined)?.name ?? "");
+  const outside = mesh(ct, ct.objects.countries, (a, b) => a !== b && !inSA(a) && !inSA(b)) as MultiLineString;
+  const inside = mesh(sa, sa.objects.countries) as MultiLineString;
   world = {
     land: feature(lt, lt.objects.land) as unknown as FeatureCollection<Polygon | MultiPolygon>,
     countries,
-    borders: mesh(ct, ct.objects.countries, (a, b) => a !== b) as MultiLineString,
+    borders: { type: "MultiLineString", coordinates: [...outside.coordinates, ...inside.coordinates] },
   };
   return world;
 }

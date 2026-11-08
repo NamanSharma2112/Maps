@@ -249,7 +249,7 @@ const population = { India: 1428, China: 1425, "United States of America": 340 /
 />`;
 
   return (
-    <Section id="world-map" title="World map" lead="Every country on one flat Equal Earth projection. Dots are laid on a hexagonal lattice, so the map stays sharp at any size. Hovering a country fades the rest; scroll or use the buttons to zoom, and click a country to fly to it.">
+    <Section id="world-map" title="World map" lead="Every country on one flat Equal Earth projection, with India on its official boundary. Dots are laid on a hexagonal lattice, so the map stays sharp at any size. Hovering a country fades the rest; scroll or use the buttons to zoom, and click a country to fly to it.">
       <Preview
         code={code}
         toolbar={
@@ -584,7 +584,7 @@ export default function App() {
 
             <footer className="foot">
               <span>Meridian UI · MIT</span>
-              <span>Country shapes: Natural Earth (public domain). India states: DataMeet, CC BY 4.0.</span>
+              <span>Country shapes: Natural Earth (public domain). India on its official boundary in every map; states from DataMeet, CC BY 4.0.</span>
             </footer>
           </div>
         </div>
