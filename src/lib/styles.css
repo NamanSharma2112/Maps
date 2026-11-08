@@ -1,0 +1,250 @@
+/* ─────────────────────────────────────────────────────────────
+   Meridian UI — design tokens
+   Light by default; `.dark` or [data-theme="dark"] on any ancestor
+   switches to dark. Override any token to theme the maps.
+   ───────────────────────────────────────────────────────────── */
+:root,
+.light,
+[data-theme="light"] {
+  --mr-background: oklch(1 0 0);
+  --mr-foreground: oklch(0.145 0 0);
+  --mr-muted: oklch(0.556 0 0);
+  --mr-border: oklch(0.922 0 0);
+  --mr-surface: oklch(1 0 0);
+  --mr-surface-muted: oklch(0.97 0 0);
+
+  --mr-land: oklch(0.922 0 0);
+  --mr-dot: oklch(0.80 0 0);
+  --mr-ocean: oklch(0.985 0 0);
+  --mr-region-stroke: oklch(1 0 0);
+  --mr-graticule: oklch(0.145 0 0 / 0.06);
+  --mr-rim: oklch(0.145 0 0 / 0.09);
+  --mr-night: oklch(0.145 0 0 / 0.10);
+
+  --mr-accent: oklch(0.585 0.233 277.117);
+  --mr-atmosphere: oklch(0.585 0.233 277.117 / 0.14);
+
+  --mr-radius: 10px;
+  --mr-font: inherit;
+  --mr-font-mono: ui-monospace, "SFMono-Regular", "Geist Mono", Menlo, Consolas, monospace;
+  --mr-ease: cubic-bezier(0.83, 0, 0.17, 1);
+}
+
+.dark,
+[data-theme="dark"] {
+  --mr-background: oklch(0.145 0 0);
+  --mr-foreground: oklch(0.985 0 0);
+  --mr-muted: oklch(0.708 0 0);
+  --mr-border: oklch(1 0 0 / 0.1);
+  --mr-surface: oklch(0.205 0 0);
+  --mr-surface-muted: oklch(0.205 0 0);
+
+  --mr-land: oklch(0.269 0 0);
+  --mr-dot: oklch(0.44 0 0);
+  --mr-ocean: oklch(0.175 0 0);
+  --mr-region-stroke: oklch(0.145 0 0);
+  --mr-graticule: oklch(1 0 0 / 0.06);
+  --mr-rim: oklch(1 0 0 / 0.09);
+  --mr-night: oklch(0 0 0 / 0.38);
+
+  --mr-accent: oklch(0.673 0.182 276.935);
+  --mr-atmosphere: oklch(0.673 0.182 276.935 / 0.2);
+}
+
+/* ── shared ─────────────────────────────────────────────────── */
+.mr-root {
+  position: relative;
+  font-family: var(--mr-font);
+  color: var(--mr-foreground);
+  -webkit-tap-highlight-color: transparent;
+}
+.mr-root *,
+.mr-root *::before,
+.mr-root *::after { box-sizing: border-box; }
+
+/* ── globe ──────────────────────────────────────────────────── */
+.mr-globe { width: 100%; aspect-ratio: 1; max-width: 100%; }
+.mr-globe canvas { display: block; touch-action: pan-y; }
+.mr-globe.is-draggable canvas { cursor: grab; }
+.mr-globe.is-dragging canvas { cursor: grabbing; }
+.mr-globe.is-pointing canvas { cursor: pointer; }
+
+/* ── flat maps ──────────────────────────────────────────────── */
+.mr-map { width: 100%; overflow: hidden; user-select: none; }
+.mr-map > svg { display: block; width: 100%; height: auto; overflow: visible; }
+.mr-map.is-zoomable > svg { cursor: grab; touch-action: none; }
+/* neighbouring land fades out at the frame instead of ending in a hard edge */
+.mr-map.has-context > svg {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 5%, #000 95%, transparent), linear-gradient(to bottom, transparent, #000 5%, #000 95%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to right, transparent, #000 5%, #000 95%, transparent), linear-gradient(to bottom, transparent, #000 5%, #000 95%, transparent);
+  mask-composite: intersect;
+}
+.mr-map.is-panning > svg { cursor: grabbing; }
+
+.mr-region {
+  stroke: var(--mr-region-stroke);
+  stroke-width: 0.75;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+  transition: opacity 200ms ease, fill 400ms ease, stroke 200ms ease;
+}
+.mr-region.is-interactive { cursor: pointer; }
+.mr-region.is-context { fill: var(--mr-land); opacity: 0.45; pointer-events: none; }
+.mr-dots { transition: opacity 200ms ease, fill 400ms ease; }
+.mr-dots.is-context { opacity: 0.4; pointer-events: none; }
+.mr-map.has-hover .mr-region:not(.is-hover):not(.is-context),
+.mr-map.has-hover .mr-dots:not(.is-hover):not(.is-context) { opacity: 0.4; }
+.mr-region.is-hover { stroke: var(--mr-foreground); stroke-width: 1.25; }
+.mr-region.is-selected { stroke: var(--mr-foreground); stroke-width: 1.5; }
+
+.mr-hit { fill: transparent; stroke: none; cursor: pointer; }
+.mr-borders { fill: none; stroke: var(--mr-region-stroke); stroke-width: 0.75; vector-effect: non-scaling-stroke; pointer-events: none; }
+.mr-graticule { fill: none; stroke: var(--mr-graticule); stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none; }
+.mr-night { fill: var(--mr-night); pointer-events: none; }
+.mr-region-label {
+  font: 500 10px/1 var(--mr-font-mono);
+  letter-spacing: 0.02em;
+  fill: var(--mr-foreground);
+  paint-order: stroke;
+  stroke: var(--mr-background);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
+  text-anchor: middle;
+  dominant-baseline: central;
+  opacity: 0.8;
+}
+
+/* entrance: regions sweep in left → right */
+@keyframes mr-fade-in { from { opacity: 0; } }
+.mr-enter { animation: mr-fade-in 700ms var(--mr-ease) both; }
+
+/* markers */
+.mr-marker { cursor: pointer; }
+.mr-marker__halo { fill: var(--mr-background); }
+.mr-marker__pulse {
+  fill: none;
+  stroke-width: 1.5;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: mr-pulse 2.4s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
+  opacity: 0;
+}
+.mr-marker:hover .mr-marker__pulse.on-hover,
+.mr-marker.is-hover .mr-marker__pulse.on-hover { animation-play-state: running; }
+.mr-marker__pulse.on-hover { animation-play-state: paused; }
+@keyframes mr-pulse {
+  0% { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(4.2); opacity: 0; }
+}
+.mr-marker__label {
+  font: 500 11px/1 var(--mr-font);
+  fill: var(--mr-foreground);
+  paint-order: stroke;
+  stroke: var(--mr-background);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
+/* arcs */
+.mr-arc__base { fill: none; stroke-width: 1; opacity: 0.22; }
+.mr-arc__trail { fill: none; stroke-width: 1.6; stroke-linecap: round; }
+.mr-arc__ripple { fill: none; stroke-width: 1.25; }
+
+/* ── tooltip ────────────────────────────────────────────────── */
+.mr-tooltip {
+  position: absolute;
+  z-index: 10;
+  min-width: 128px;
+  max-width: 240px;
+  padding: 8px 10px;
+  border: 1px solid var(--mr-border);
+  border-radius: 8px;
+  background: var(--mr-surface);
+  color: var(--mr-foreground);
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.06), 0 8px 24px -6px oklch(0 0 0 / 0.16);
+  font: 400 12px/1.4 var(--mr-font);
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 12px));
+  animation: mr-tip-in 120ms ease-out both;
+  white-space: nowrap;
+}
+.mr-tooltip.is-follow { transform: translate(14px, 14px); }
+@keyframes mr-tip-in { from { opacity: 0; } }
+.mr-tooltip__title { display: flex; align-items: center; gap: 6px; font-weight: 500; }
+.mr-tooltip__swatch { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.mr-tooltip__body {
+  margin-top: 4px;
+  color: var(--mr-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: normal;
+}
+.mr-tooltip__row { display: flex; justify-content: space-between; gap: 16px; }
+.mr-tooltip__row b { color: var(--mr-foreground); font-weight: 500; }
+
+/* ── legend ─────────────────────────────────────────────────── */
+.mr-legend { display: inline-flex; flex-direction: column; gap: 6px; font: 400 11px/1 var(--mr-font); color: var(--mr-muted); }
+.mr-legend__title { color: var(--mr-foreground); font-weight: 500; font-size: 12px; }
+.mr-legend__bins { display: flex; gap: 2px; }
+.mr-legend__bin { width: 32px; height: 8px; border-radius: 2px; }
+.mr-legend__bin:first-child { border-radius: 4px 2px 2px 4px; }
+.mr-legend__bin:last-child { border-radius: 2px 4px 4px 2px; }
+.mr-legend__scale { display: flex; justify-content: space-between; font-family: var(--mr-font-mono); font-size: 10px; font-variant-numeric: tabular-nums; }
+.mr-legend__items { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.mr-legend__item { display: inline-flex; align-items: center; gap: 6px; }
+.mr-legend__dot { width: 8px; height: 8px; border-radius: 50%; }
+.mr-map__legend { position: absolute; left: 12px; bottom: 12px; padding: 8px 10px; border-radius: 8px; background: color-mix(in oklab, var(--mr-background) 82%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+
+/* ── controls ───────────────────────────────────────────────── */
+.mr-controls {
+  display: inline-flex;
+  flex-direction: column;
+  border: 1px solid var(--mr-border);
+  border-radius: 8px;
+  background: var(--mr-surface);
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.05);
+  overflow: hidden;
+}
+.mr-controls__btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--mr-foreground);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.mr-controls__btn + .mr-controls__btn { border-top: 1px solid var(--mr-border); }
+.mr-controls__btn:hover { background: var(--mr-surface-muted); }
+.mr-controls__btn:disabled { color: var(--mr-muted); opacity: 0.5; cursor: default; background: transparent; }
+.mr-controls__btn:focus-visible { outline: 2px solid var(--mr-accent); outline-offset: -2px; }
+.mr-controls__btn svg { width: 16px; height: 16px; }
+.mr-map__controls { position: absolute; top: 12px; right: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mr-enter, .mr-tooltip { animation: none; }
+  .mr-marker__pulse { animation: none; opacity: 0; }
+  .mr-region, .mr-dots { transition: none; }
+}
+
+.mr-map__attribution {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  font: 400 10px/1 var(--mr-font);
+  color: var(--mr-muted);
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+/* on narrow maps the credit moves to the top-left, clear of the legend */
+.mr-map.has-attribution { container-type: inline-size; }
+@container (max-width: 560px) {
+  .mr-map__attribution { top: 8px; left: 10px; right: auto; bottom: auto; max-width: 60%; line-height: 1.3; }
+}

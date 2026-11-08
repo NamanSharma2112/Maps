@@ -1,0 +1,68 @@
+{
+  "name": "meridian-ui",
+  "version": "0.1.0",
+  "description": "Animated React components for maps and globes — dotted globes, arc maps, choropleths, flight cards, radar, compass and more. Zero tile servers, fully themeable.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/meridian-ui.cjs",
+  "module": "./dist/meridian-ui.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/meridian-ui.js",
+      "require": "./dist/meridian-ui.cjs"
+    },
+    "./styles.css": "./dist/meridian-ui.css"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "keywords": [
+    "react",
+    "map",
+    "globe",
+    "d3-geo",
+    "ui",
+    "components",
+    "animation",
+    "choropleth"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run build:lib && npm run build:demo",
+    "build:lib": "vite build -c vite.lib.config.ts && mv dist/style.css dist/meridian-ui.css && tsc -p tsconfig.lib.json",
+    "build:demo": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepare": "npm run build:lib"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "dependencies": {
+    "d3-geo": "^3.1.1",
+    "topojson-client": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/d3-geo": "^3.1.1",
+    "@types/geojson": "^7946.0.16",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@types/topojson-client": "^3.1.5",
+    "@types/topojson-specification": "^1.0.5",
+    "@vitejs/plugin-react": "^4.7.0",
+    "mapshaper": "^0.6.121",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "5.6",
+    "vite": "^5.4.21",
+    "vite-plugin-singlefile": "^2.3.4",
+    "vitest": "^2.1.9",
+    "world-atlas": "^2.0.2"
+  }
+}
