@@ -327,3 +327,8 @@ h2 {
 }
 .chip--primary { background: var(--mr-foreground); color: var(--mr-background); border-color: var(--mr-foreground); }
 .chip--primary:hover { background: var(--mr-foreground); opacity: 0.88; }
+
+.top__nav a[aria-current="page"] { color: var(--mr-foreground); font-weight: 500; }
+.docs--single { grid-template-columns: minmax(0, 1fr); }
+.creator-hero { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; padding-top: 56px; }
+.studio { gap: 10px 14px; background: var(--mr-surface-muted); }

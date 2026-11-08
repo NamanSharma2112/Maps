@@ -20,7 +20,7 @@ import {
   formatCompact,
   formatNumber,
 } from "../lib";
-import type { Continent, LatLng, Region, VideoAspect, VideoMapHandle, VideoStop } from "../lib";
+import type { Continent, LatLng, Region, VideoAspect, VideoMapHandle, VideoStop, VideoTheme } from "../lib";
 import { CITIES, HUB_ARCS, HUB_MARKERS, INDIA_CITIES, INDIA_POPULATION_2011, WORLD_POPULATION } from "./data";
 import { Code, CopyButton } from "./Code";
 
@@ -554,6 +554,12 @@ function VideoSection() {
   const [bg, setBg] = useState<"theme" | "green" | "transparent">("theme");
   const [variant, setVariant] = useState<"solid" | "dots">("solid");
   const [story, setStory] = useState<keyof typeof STORIES>("trip");
+  const [theme, setTheme] = useState<VideoTheme>("midnight");
+  const [routeStyle, setRouteStyle] = useState<"dashed" | "solid" | "glow">("glow");
+  const [vehicle, setVehicle] = useState<"plane" | "dot">("plane");
+  const [caption, setCaption] = useState<"lower-third" | "pill">("lower-third");
+  const [speedX, setSpeedX] = useState<"1" | "1.5" | "2">("1");
+  const [extras, setExtras] = useState({ progress: true, vignette: true, distance: true });
   const [status, setStatus] = useState("");
   const map = useRef<VideoMapHandle>(null);
   const s = STORIES[story];
@@ -583,6 +589,9 @@ const ref = useRef<VideoMapHandle>(null);
   aspect="${aspect}"            // 16:9 YouTube · 9:16 Reels/Shorts · 1:1 · 4:5
   resolution={1080}
   background="${bg}"       // theme · green (chroma key) · transparent
+  theme="${theme}"          // auto · light · dark · midnight · sand
+  routeStyle="${routeStyle}"  vehicle="${vehicle}"  captionStyle="${caption}"
+  speed={${speedX}}  progress={${extras.progress}}  vignette={${extras.vignette}}  showDistance={${extras.distance}}
   variant="${variant}"
   title="${s.title}"
   stops={[
@@ -606,6 +615,17 @@ const png = await ref.current.snapshot();   // current frame`;
           </>
         }
         footer={
+          <>
+          <div className="preview__foot studio">
+            <Segmented label="Theme" value={theme} onChange={setTheme} options={[{ value: "auto", label: "Auto" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }, { value: "midnight", label: "Midnight" }, { value: "sand", label: "Sand" }]} />
+            <Segmented label="Route" value={routeStyle} onChange={setRouteStyle} options={[{ value: "glow", label: "Glow" }, { value: "dashed", label: "Dashed" }, { value: "solid", label: "Solid" }]} />
+            <Segmented label="Vehicle" value={vehicle} onChange={setVehicle} options={[{ value: "plane", label: "Plane" }, { value: "dot", label: "Dot" }]} />
+            <Segmented label="Caption" value={caption} onChange={setCaption} options={[{ value: "lower-third", label: "Lower third" }, { value: "pill", label: "Pill" }]} />
+            <Segmented label="Speed" value={speedX} onChange={setSpeedX} options={[{ value: "1", label: "1×" }, { value: "1.5", label: "1.5×" }, { value: "2", label: "2×" }]} />
+            <Toggle checked={extras.progress} onChange={(v) => setExtras({ ...extras, progress: v })}>Progress</Toggle>
+            <Toggle checked={extras.vignette} onChange={(v) => setExtras({ ...extras, vignette: v })}>Vignette</Toggle>
+            <Toggle checked={extras.distance} onChange={(v) => setExtras({ ...extras, distance: v })}>Distance</Toggle>
+          </div>
           <div className="preview__foot">
             <div className="chips">
               <button type="button" className="chip" onClick={() => map.current?.replay()}>Replay</button>
@@ -614,10 +634,13 @@ const png = await ref.current.snapshot();   // current frame`;
             </div>
             <span className="muted" aria-live="polite">{status || "1080p output. Recording plays the route once in real time."}</span>
           </div>
+          </>
         }
       >
         <div className={`video-stage video-stage--${aspect.replace(":", "x")}${bg === "transparent" ? " is-checker" : ""}`}>
-          <VideoMap ref={map} key={`${story}-${aspect}-${variant}`} aspect={aspect} background={bg} variant={variant} stops={s.stops} title={s.title} subtitle={s.subtitle} />
+          <VideoMap ref={map} key={`${story}-${aspect}-${variant}`} aspect={aspect} background={bg} variant={variant} stops={s.stops} title={s.title} subtitle={s.subtitle}
+            theme={theme} routeStyle={routeStyle} vehicle={vehicle} captionStyle={caption} speed={Number(speedX)}
+            progress={extras.progress} vignette={extras.vignette} showDistance={extras.distance} />
         </div>
       </Preview>
       <PropsTable
@@ -628,7 +651,13 @@ const png = await ref.current.snapshot();   // current frame`;
           ["background", '"theme" | "green" | "transparent" | color', '"theme"', "Green is chroma-key #00b140; transparent keeps alpha in PNG and WebM."],
           ["variant", '"solid" | "dots"', '"solid"', "Land style."],
           ["route", "boolean", "true", "Dashed travelling route between stops."],
-          ["flight / hold", "number", "1.6 / 1.4", "Seconds flying between stops and holding on each."],
+          ["theme", '"auto" | "light" | "dark" | "midnight" | "sand"', '"auto"', "Colour theme; auto follows the page tokens."],
+          ["routeStyle", '"dashed" | "solid" | "glow" | "none"', '"dashed"', "How the route is drawn."],
+          ["vehicle", '"plane" | "dot" | "none"', '"plane"', "Travels the route, turning with its heading."],
+          ["captionStyle", '"lower-third" | "pill" | "none"', '"lower-third"', "Broadcast card with stop number and distance, or a centred pill."],
+          ["progress / vignette / showDistance", "boolean", "true", "Timeline bar, darkened edges, running distance."],
+          ["speed", "number", "1", "Playback speed multiplier."],
+          ["flight / hold", "number", "1.8 / 1.6", "Seconds flying between stops and holding on each."],
           ["title / subtitle", "string", "—", "Text in the top-left corner."],
           ["ref.record()", "() => Promise<Blob>", "—", "Plays the timeline once and returns the video."],
           ["ref.snapshot()", "() => Promise<Blob>", "—", "The current frame as PNG."],
@@ -644,7 +673,6 @@ const NAV = [
   { id: "globe", label: "Globe" },
   { id: "world-map", label: "World map" },
   { id: "gallery", label: "Styles gallery" },
-  { id: "video-map", label: "Video map" },
   { id: "india-map", label: "India map" },
   { id: "continent-map", label: "Continent maps" },
   { id: "legend-controls", label: "Legend and controls" },
@@ -652,6 +680,12 @@ const NAV = [
 
 export default function App() {
   const { dark, toggle } = useTheme();
+  const [view, setView] = useState<"dev" | "creators">(() => (location.hash === "#creators" ? "creators" : "dev"));
+  useEffect(() => {
+    const on = () => setView(location.hash === "#creators" ? "creators" : "dev");
+    window.addEventListener("hashchange", on);
+    return () => window.removeEventListener("hashchange", on);
+  }, []);
   const [active, setActive] = useState("globe");
 
   useEffect(() => {
@@ -679,7 +713,8 @@ export default function App() {
             Meridian <span className="brand__ui">UI</span>
           </a>
           <nav className="top__nav" aria-label="Main">
-            <a href="#globe">Components</a>
+            <a href="#developers" aria-current={view === "dev" ? "page" : undefined}>Developers</a>
+            <a href="#creators" aria-current={view === "creators" ? "page" : undefined}>Creators</a>
             <a href={REPO} target="_blank" rel="noreferrer">GitHub</a>
           </nav>
           <button type="button" className="icon-btn" onClick={toggle} aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}>
@@ -693,6 +728,18 @@ export default function App() {
       </header>
 
       <main id="top">
+        {view === "creators" ? (
+          <div className="docs docs--single">
+            <div className="content">
+              <section className="creator-hero">
+                <span className="eyebrow">For YouTube, Instagram and TikTok creators</span>
+                <h1>Map animations for your videos.</h1>
+                <p className="hero__lead">Pick a route, frame and style, then record. You get a 1080p video or PNG, on your theme, green screen or a transparent background. No editing software needed.</p>
+              </section>
+              <VideoSection />
+            </div>
+          </div>
+        ) : (<>
         <section className="hero">
           <div className="hero__copy">
             <span className="eyebrow">React · d3-geo · no tile server</span>
@@ -707,6 +754,7 @@ export default function App() {
             </div>
             <div className="hero__actions">
               <a className="btn btn--primary" href="#globe">Browse components</a>
+              <a className="btn" href="#creators">Video maps for creators</a>
               <a className="btn" href={REPO} target="_blank" rel="noreferrer">View on GitHub</a>
             </div>
           </div>
@@ -731,7 +779,6 @@ export default function App() {
             <GlobeSection />
             <WorldSection />
             <GallerySection />
-            <VideoSection />
             <IndiaSection />
             <ContinentSection />
             <PartsSection />
@@ -763,6 +810,7 @@ export default function App() {
             </footer>
           </div>
         </div>
+        </>)}
       </main>
     </>
   );
