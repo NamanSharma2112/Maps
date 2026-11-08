@@ -17,6 +17,16 @@ export {
   AntarcticaMap,
 } from "./components/ContinentMap";
 export type { ContinentMapProps } from "./components/ContinentMap";
+export {
+  DottedGlobe,
+  SolidGlobe,
+  WireframeGlobe,
+  DayNightGlobe,
+  DottedWorldMap,
+  OutlineWorldMap,
+  DayNightWorldMap,
+  MercatorWorldMap,
+} from "./components/presets";
 export { MapLegend } from "./components/MapLegend";
 export type { MapLegendProps } from "./components/MapLegend";
 export { MapControls } from "./components/MapControls";

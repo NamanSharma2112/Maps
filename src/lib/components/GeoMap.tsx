@@ -15,8 +15,8 @@ import { MapControls } from "./MapControls";
 
 /** Props shared by WorldMap, IndiaMap and ContinentMap. */
 export interface BaseMapProps {
-  /** "solid" fills each region; "dots" draws a hexagonal dot lattice. */
-  variant?: "solid" | "dots";
+  /** "solid" fills each region; "dots" draws a hexagonal dot lattice; "outline" draws borders only. */
+  variant?: "solid" | "dots" | "outline";
   /** Values keyed by region name or id. Turns the map into a choropleth. */
   data?: Record<string, number>;
   /** How values are split into color bins. Default "quantile". */
@@ -336,7 +336,8 @@ export function GeoMap({
   };
 
   // ── render helpers ─────────────────────────────────────────
-  const fillOf = (i: number) => colorScale?.colorOf(values?.[i]) ?? (variant === "dots" ? "var(--mr-dot)" : "var(--mr-land)");
+  const fillOf = (i: number) =>
+    colorScale?.colorOf(values?.[i]) ?? (variant === "dots" ? "var(--mr-dot)" : variant === "outline" ? "transparent" : "var(--mr-land)");
   const hoverRegion = hover?.kind === "region" ? hover.i : -1;
   const canClick = interactive && (!!onRegionClick || zoomable);
   const project = (lng: number, lat: number) => {
@@ -408,7 +409,7 @@ export function GeoMap({
   return (
     <div
       ref={wrapRef}
-      className={cx("mr-root mr-map", context.length > 0 && "has-context", attribution && "has-attribution", zoomable && "is-zoomable", panning && "is-panning", hoverRegion >= 0 && "has-hover", className)}
+      className={cx("mr-root mr-map", variant === "outline" && "is-outline", context.length > 0 && "has-context", attribution && "has-attribution", zoomable && "is-zoomable", panning && "is-panning", hoverRegion >= 0 && "has-hover", className)}
       style={{ aspectRatio: String(aspect), ...style }}
     >
       {width > 0 && (
@@ -428,7 +429,7 @@ export function GeoMap({
           <g transform={`translate(${t.x} ${t.y}) scale(${t.k})`}>
             {underlay?.(path)}
 
-            {variant === "solid" ? (
+            {variant !== "dots" ? (
               <>
                 {contextPaths.map((d, i) => <path key={`c${i}`} d={d} className="mr-region is-context" />)}
                 {regionPaths.map((d, i) => (

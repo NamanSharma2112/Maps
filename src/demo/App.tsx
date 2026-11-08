@@ -7,6 +7,14 @@ import {
   MapControls,
   MapLegend,
   WorldMap,
+  DottedGlobe,
+  SolidGlobe,
+  WireframeGlobe,
+  DayNightGlobe,
+  DottedWorldMap,
+  OutlineWorldMap,
+  DayNightWorldMap,
+  MercatorWorldMap,
   CONTINENTS,
   formatCompact,
   formatNumber,
@@ -121,7 +129,7 @@ function Section({ id, title, badge, lead, children }: { id: string; title: stri
 }
 
 const SHARED_PROPS: PropRow[] = [
-  ["variant", '"solid" | "dots"', "—", "Filled regions, or a hexagonal dot lattice clipped to land."],
+  ["variant", '"solid" | "dots" | "outline"', "—", "Filled regions, a hexagonal dot lattice, or borders only."],
   ["data", "Record<string, number>", "—", "Values keyed by region name or id. Turns the map into a choropleth."],
   ["scale", '"quantile" | "linear"', '"quantile"', "How values are split into color bins."],
   ["steps", "number", "5", "Number of color bins. The ramp mixes the accent into the land tone."],
@@ -221,7 +229,7 @@ export function NetworkGlobe() {
 }
 
 function WorldSection() {
-  const [variant, setVariant] = useState<"dots" | "solid">("dots");
+  const [variant, setVariant] = useState<"dots" | "solid" | "outline">("dots");
   const [mode, setMode] = useState<"network" | "population">("network");
   const population = mode === "population";
 
@@ -254,7 +262,7 @@ const population = { India: 1428, China: 1425, "United States of America": 340 /
         code={code}
         toolbar={
           <>
-            <Segmented label="Land style" value={variant} onChange={setVariant} options={[{ value: "dots", label: "Dots" }, { value: "solid", label: "Solid" }]} />
+            <Segmented label="Land style" value={variant} onChange={setVariant} options={[{ value: "dots", label: "Dots" }, { value: "solid", label: "Solid" }, { value: "outline", label: "Outline" }]} />
             <Segmented label="Data" value={mode} onChange={setMode} options={[{ value: "network", label: "Routes" }, { value: "population", label: "Population" }]} />
           </>
         }
@@ -467,11 +475,51 @@ function PartsSection() {
   );
 }
 
+
+const GLOBE_STYLES = [
+  { name: "DottedGlobe", note: "Halftone land, rim glow", el: <DottedGlobe arcs={HUB_ARCS.slice(0, 4)} markers={HUB_MARKERS.slice(0, 6)} initialView={{ lat: 30, lng: 10 }} /> },
+  { name: "SolidGlobe", note: "Filled land, borders, 10° grid", el: <SolidGlobe markers={HUB_MARKERS.slice(6)} initialView={{ lat: 20, lng: 100 }} /> },
+  { name: "WireframeGlobe", note: "Coastlines and grid only", el: <WireframeGlobe arcs={HUB_ARCS.slice(4, 8)} initialView={{ lat: 10, lng: -60 }} /> },
+  { name: "DayNightGlobe", note: "Night side follows the real sun", el: <DayNightGlobe autoRotate={4} initialView={{ lat: 20, lng: 78 }} /> },
+];
+const MAP_STYLES = [
+  { name: "DottedWorldMap", note: "Hex dot lattice, Equal Earth", el: <DottedWorldMap markers={HUB_MARKERS} interactive={false} dotGap={5} /> },
+  { name: "OutlineWorldMap", note: "Borders only, Natural Earth + grid", el: <OutlineWorldMap arcs={HUB_ARCS.slice(0, 5)} /> },
+  { name: "DayNightWorldMap", note: "Live night shadow", el: <DayNightWorldMap markers={HUB_MARKERS.map(({ label, ...m }) => ({ ...m, description: label }))} /> },
+  { name: "MercatorWorldMap", note: "Web Mercator projection", el: <MercatorWorldMap data={WORLD_POPULATION} valueLabel="Population" formatValue={(v) => `${formatNumber(v)} M`} /> },
+];
+
+function GallerySection() {
+  return (
+    <Section id="gallery" title="Styles gallery" badge="8 presets" lead="Ready-made looks for globes and world maps. Each preset takes every prop of its base component, so any default can be changed.">
+      <h3 className="gallery__h">Globes</h3>
+      <div className="gallery gallery--globes">
+        {GLOBE_STYLES.map((g) => (
+          <figure key={g.name} className="gallery__card">
+            <div className="gallery__stage">{g.el}</div>
+            <figcaption><code>{`<${g.name} />`}</code><span>{g.note}</span></figcaption>
+          </figure>
+        ))}
+      </div>
+      <h3 className="gallery__h">World maps</h3>
+      <div className="gallery gallery--maps">
+        {MAP_STYLES.map((g) => (
+          <figure key={g.name} className="gallery__card">
+            <div className="gallery__stage">{g.el}</div>
+            <figcaption><code>{`<${g.name} />`}</code><span>{g.note}</span></figcaption>
+          </figure>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
 /* ── page ───────────────────────────────────────────────────── */
 
 const NAV = [
   { id: "globe", label: "Globe" },
   { id: "world-map", label: "World map" },
+  { id: "gallery", label: "Styles gallery" },
   { id: "india-map", label: "India map" },
   { id: "continent-map", label: "Continent maps" },
   { id: "legend-controls", label: "Legend and controls" },
@@ -557,6 +605,7 @@ export default function App() {
           <div className="content">
             <GlobeSection />
             <WorldSection />
+            <GallerySection />
             <IndiaSection />
             <ContinentSection />
             <PartsSection />

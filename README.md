@@ -16,6 +16,7 @@ Animated, themeable React components for maps and globes. Dotted or solid land, 
 | `WorldMap` | Every country on Equal Earth (or Natural Earth, Mercator, equirectangular). Hex dot lattice or solid fills, markers, arcs, choropleth, zoom. |
 | `IndiaMap` | All 28 states and 8 union territories on official boundaries. Keys by state name or ISO 3166-2 code (`"MH"`, `"KA"`, …). |
 | `ContinentMap` | One continent per map, each with its own equal-area projection. Presets: `AfricaMap`, `AsiaMap`, `EuropeMap`, `NorthAmericaMap`, `SouthAmericaMap`, `OceaniaMap`, `AntarcticaMap`. |
+| Presets | `DottedGlobe`, `SolidGlobe`, `WireframeGlobe`, `DayNightGlobe`, `DottedWorldMap`, `OutlineWorldMap`, `DayNightWorldMap`, `MercatorWorldMap`. Each takes every prop of its base component. |
 | `MapLegend` | Sequential ramp or categorical key using the same tokens. |
 | `MapControls` | Zoom in / out / reset buttons (built into zoomable maps). |
 
