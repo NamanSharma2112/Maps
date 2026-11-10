@@ -2,17 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { geoPath } from "d3-geo";
 import type { GeoPath, GeoPermissibleObjects, GeoProjection } from "d3-geo";
-import { locate } from "../data/regions";
+import { centroidOf, locate } from "../data/regions";
 import type { Region, RegionFeature } from "../data/regions";
 import { createColorScale, formatNumber } from "../utils/scale";
 import type { ScaleType } from "../utils/scale";
-import { useElementSize, useReducedMotion } from "../utils/hooks";
+import { useElementSize, useInView, useReducedMotion } from "../utils/hooks";
 import { cx } from "../utils/cx";
 import type { MapArc, MapBubble, MapMarker } from "../types";
 import { Tooltip } from "./Tooltip";
 import { MapLegend } from "./MapLegend";
 import { MapControls } from "./MapControls";
 import { MapSkeleton } from "./MapSkeleton";
+import { rasterIndex } from "../utils/raster";
 
 /** Props shared by WorldMap, IndiaMap and ContinentMap. */
 export interface BaseMapProps {
@@ -154,6 +155,9 @@ export function GeoMap({
   "aria-label": ariaLabel = "Map",
 }: GeoMapProps) {
   const [wrapRef, size] = useElementSize<HTMLDivElement>();
+  const inView = useInView(wrapRef);
+  const [zoomHint, setZoomHint] = useState(false);
+  const hintTimer = useRef(0);
   const svgRef = useRef<SVGSVGElement>(null);
   const reduced = useReducedMotion();
 
@@ -170,15 +174,20 @@ export function GeoMap({
 
   const projection = useMemo(() => {
     const pad = Math.max(1, Math.round(width * fitPadding));
-    return makeProjection().fitExtent([[pad, pad], [Math.max(pad + 1, width - pad), Math.max(pad + 1, height - pad)]], fit);
+    return makeProjection().precision(1).fitExtent([[pad, pad], [Math.max(pad + 1, width - pad), Math.max(pad + 1, height - pad)]], fit);
   }, [makeProjection, fit, width, height, fitPadding]);
   const path = useMemo(() => geoPath(projection), [projection]);
 
   const regionPaths = useMemo(() => regions.map((r) => path(r.geometry) ?? ""), [regions, path]);
   const contextPaths = useMemo(() => context.map((r) => path(r.geometry) ?? ""), [context, path]);
   const centroids = useMemo(
-    () => regions.map((r) => { const c = path.centroid(r.geometry); return { x: c[0], y: c[1], area: path.area(r.geometry) }; }),
-    [regions, path],
+    () =>
+      regions.map((r) => {
+        const [lng, lat] = centroidOf(r);
+        const p = projection([lng, lat]) ?? [NaN, NaN];
+        return { x: p[0], y: p[1], area: labels ? path.area(r.geometry) : 0 };
+      }),
+    [regions, projection, path, labels],
   );
 
   // Dot lattice, built at a debounced width and scaled while resizing.
@@ -187,22 +196,36 @@ export function GeoMap({
     if (variant !== "dots" || dotWidth < 10) return null;
     const h = Math.round(dotWidth / aspect);
     const pad = Math.max(1, Math.round(dotWidth * fitPadding));
-    const proj = makeProjection().fitExtent([[pad, pad], [dotWidth - pad, h - pad]], fit);
+    const proj = makeProjection().precision(1).fitExtent([[pad, pad], [dotWidth - pad, h - pad]], fit);
     const gap = Math.max(3, dotGap);
     const rad = r2(gap * 0.32);
     const rowH = (gap * Math.sqrt(3)) / 2;
     const byRegion: string[][] = regions.map(() => []);
     const ctx: string[] = [];
-    for (let row = 0, y = rowH / 2; y < h; row++, y += rowH) {
-      for (let x = gap / 2 + (row % 2 ? gap / 2 : 0); x < dotWidth; x += gap) {
-        const ll = proj.invert?.([x, y]);
-        if (!ll || !Number.isFinite(ll[0])) continue;
-        const back = proj(ll);
-        if (!back || Math.abs(back[0] - x) > 0.5 || Math.abs(back[1] - y) > 0.5) continue;
-        const d = `M${r2(x - rad)} ${r2(y)}a${rad} ${rad} 0 1 0 ${r2(rad * 2)} 0a${rad} ${rad} 0 1 0 ${r2(-rad * 2)} 0`;
-        const i = locate(regions, ll[0], ll[1]);
-        if (i >= 0) byRegion[i].push(d);
-        else if (context.length && locate(context, ll[0], ll[1]) >= 0) ctx.push(d);
+    const dot = (x: number, y: number) => `M${r2(x - rad)} ${r2(y)}a${rad} ${rad} 0 1 0 ${r2(rad * 2)} 0a${rad} ${rad} 0 1 0 ${r2(-rad * 2)} 0`;
+    // Fast path: rasterise the projected shapes once, then each lattice point is a pixel read.
+    const pth = geoPath(proj);
+    const own = rasterIndex(dotWidth, h, regions.map((r) => pth(r.geometry)), regions.map((r) => pth.bounds(r.geometry)));
+    const near = context.length ? rasterIndex(dotWidth, h, context.map((r) => pth(r.geometry)), context.map((r) => pth.bounds(r.geometry))) : null;
+    if (own) {
+      for (let row = 0, y = rowH / 2; y < h; row++, y += rowH) {
+        for (let x = gap / 2 + (row % 2 ? gap / 2 : 0); x < dotWidth; x += gap) {
+          const i = own.at(x, y);
+          if (i >= 0) byRegion[i].push(dot(x, y));
+          else if (near && near.at(x, y) >= 0) ctx.push(dot(x, y));
+        }
+      }
+    } else {
+      for (let row = 0, y = rowH / 2; y < h; row++, y += rowH) {
+        for (let x = gap / 2 + (row % 2 ? gap / 2 : 0); x < dotWidth; x += gap) {
+          const ll = proj.invert?.([x, y]);
+          if (!ll || !Number.isFinite(ll[0])) continue;
+          const back = proj(ll);
+          if (!back || Math.abs(back[0] - x) > 0.5 || Math.abs(back[1] - y) > 0.5) continue;
+          const i = locate(regions, ll[0], ll[1]);
+          if (i >= 0) byRegion[i].push(dot(x, y));
+          else if (context.length && locate(context, ll[0], ll[1]) >= 0) ctx.push(dot(x, y));
+        }
       }
     }
     return { width: dotWidth, regions: byRegion.map((a) => a.join("")), context: ctx.join("") };
@@ -285,7 +308,15 @@ export function GeoMap({
     const svg = svgRef.current;
     if (!svg || !zoomable) return;
     const onWheel = (e: WheelEvent) => {
+      // Let the page scroll. Zoom only with Ctrl/⌘ held — trackpad pinch sends ctrlKey too.
+      if (!e.ctrlKey && !e.metaKey) {
+        setZoomHint(true);
+        clearTimeout(hintTimer.current);
+        hintTimer.current = window.setTimeout(() => setZoomHint(false), 1400);
+        return;
+      }
       e.preventDefault();
+      setZoomHint(false);
       cancelAnimationFrame(anim.current);
       const rect = svg.getBoundingClientRect();
       const factor = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0022));
@@ -370,24 +401,79 @@ export function GeoMap({
   const dotScale = dots ? width / dots.width : 1;
   const showControls = controls ?? zoomable;
 
+  const latest = useRef({ setRegionHover, clearHover, activateRegion, localPoint, t });
+  latest.current = { setRegionHover, clearHover, activateRegion, localPoint, t };
+
   const regionEvents = (i: number) =>
     interactive
       ? {
-          onPointerMove: (e: React.PointerEvent) => { if (!pan.current?.moved) { const p = localPoint(e); setRegionHover(i, p.x, p.y); } },
-          onPointerLeave: clearHover,
-          onClick: () => { if (!suppressClick.current) activateRegion(i); },
+          onPointerMove: (e: React.PointerEvent) => {
+            if (pan.current?.moved) return;
+            const L = latest.current;
+            const p = L.localPoint(e);
+            L.setRegionHover(i, p.x, p.y);
+          },
+          onPointerLeave: () => latest.current.clearHover(),
+          onClick: () => { if (!suppressClick.current) latest.current.activateRegion(i); },
           ...(canClick
             ? {
                 tabIndex: 0,
                 role: "button",
                 "aria-label": `${regions[i].name}${values?.[i] !== undefined ? `, ${formatValue(values[i]!)}` : ""}`,
-                onFocus: () => setRegionHover(i, centroids[i].x * t.k + t.x, centroids[i].y * t.k + t.y),
-                onBlur: clearHover,
-                onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activateRegion(i); } },
+                onFocus: () => { const { t: tt, setRegionHover: set } = latest.current; set(i, centroids[i].x * tt.k + tt.x, centroids[i].y * tt.k + tt.y); },
+                onBlur: () => latest.current.clearHover(),
+                onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); latest.current.activateRegion(i); } },
               }
             : {}),
         }
       : {};
+
+  // The geography only changes with size, data, hover region or selection — not with every pointer
+  // move or zoom step — so it is built once here and reused.
+  const baseLayer = useMemo(
+    () => (
+      <>
+            {underlay?.(path)}
+
+            {variant !== "dots" ? (
+              <>
+                {contextPaths.map((d, i) => <path key={`c${i}`} d={d} className="mr-region is-context" />)}
+                {regionPaths.map((d, i) => (
+                  <path
+                    key={regions[i].id}
+                    d={d}
+                    className={cx("mr-region mr-enter", canClick && "is-interactive", hoverRegion === i && "is-hover", selectedIndex === i && "is-selected")}
+                    style={{ fill: fillOf(i), animationDelay: `${Math.round((centroids[i].x / Math.max(1, width)) * 450)}ms` }}
+                    {...regionEvents(i)}
+                  />
+                ))}
+              </>
+            ) : dots ? (
+              <g transform={dotScale !== 1 ? `scale(${dotScale})` : undefined}>
+                {dots.context && <path d={dots.context} className="mr-dots is-context" style={{ fill: "var(--mr-dot)" }} />}
+                {dots.regions.map((d, i) =>
+                  d ? (
+                    <path
+                      key={regions[i].id}
+                      d={d}
+                      className={cx("mr-dots mr-enter", hoverRegion === i && "is-hover")}
+                      style={{ fill: selectedIndex === i ? "var(--mr-accent)" : fillOf(i), animationDelay: `${Math.round((centroids[i].x / Math.max(1, width)) * 450)}ms` }}
+                    />
+                  ) : null,
+                )}
+              </g>
+            ) : null}
+
+            {/* invisible hit areas so the gaps between dots still respond */}
+            {variant === "dots" && interactive &&
+              regionPaths.map((d, i) => <path key={`h${i}`} d={d} className="mr-hit" {...regionEvents(i)} />)}
+
+            {overlay?.(path)}
+      </>
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [path, underlay, overlay, variant, contextPaths, regionPaths, regions, canClick, hoverRegion, selectedIndex, values, colorScale, regionFill, centroids, width, dots, dotScale, interactive, formatValue],
+  );
 
   const tooltip = (() => {
     if (!hover || !interactive) return null;
@@ -442,7 +528,7 @@ export function GeoMap({
   return (
     <div
       ref={wrapRef}
-      className={cx("mr-root mr-map", variant === "outline" && "is-outline", context.length > 0 && "has-context", attribution && "has-attribution", zoomable && "is-zoomable", panning && "is-panning", hoverRegion >= 0 && "has-hover", className)}
+      className={cx("mr-root mr-map", inView && "is-visible", t.k > 1.01 && "is-zoomed", variant === "outline" && "is-outline", context.length > 0 && "has-context", attribution && "has-attribution", zoomable && "is-zoomable", panning && "is-panning", hoverRegion >= 0 && "has-hover", className)}
       style={{ aspectRatio: String(aspect), ...style }}
     >
       {(loading || width === 0 || (variant === "dots" && !dots)) && (
@@ -463,42 +549,7 @@ export function GeoMap({
           onDoubleClick={(e) => { if (zoomable) { const p = localPoint(e); animateTo(zoomBy(2, [p.x, p.y])); } }}
         >
           <g transform={`translate(${t.x} ${t.y}) scale(${t.k})`}>
-            {underlay?.(path)}
-
-            {variant !== "dots" ? (
-              <>
-                {contextPaths.map((d, i) => <path key={`c${i}`} d={d} className="mr-region is-context" />)}
-                {regionPaths.map((d, i) => (
-                  <path
-                    key={regions[i].id}
-                    d={d}
-                    className={cx("mr-region mr-enter", canClick && "is-interactive", hoverRegion === i && "is-hover", selectedIndex === i && "is-selected")}
-                    style={{ fill: fillOf(i), animationDelay: `${Math.round((centroids[i].x / Math.max(1, width)) * 450)}ms` }}
-                    {...regionEvents(i)}
-                  />
-                ))}
-              </>
-            ) : dots ? (
-              <g transform={dotScale !== 1 ? `scale(${dotScale})` : undefined}>
-                {dots.context && <path d={dots.context} className="mr-dots is-context" style={{ fill: "var(--mr-dot)" }} />}
-                {dots.regions.map((d, i) =>
-                  d ? (
-                    <path
-                      key={regions[i].id}
-                      d={d}
-                      className={cx("mr-dots mr-enter", hoverRegion === i && "is-hover")}
-                      style={{ fill: selectedIndex === i ? "var(--mr-accent)" : fillOf(i), animationDelay: `${Math.round((centroids[i].x / Math.max(1, width)) * 450)}ms` }}
-                    />
-                  ) : null,
-                )}
-              </g>
-            ) : null}
-
-            {/* invisible hit areas so the gaps between dots still respond */}
-            {variant === "dots" && interactive &&
-              regionPaths.map((d, i) => <path key={`h${i}`} d={d} className="mr-hit" {...regionEvents(i)} />)}
-
-            {overlay?.(path)}
+            {baseLayer}
           </g>
 
           {labels &&
@@ -541,7 +592,7 @@ export function GeoMap({
             );
           })()}
 
-          {arcs.length > 0 && <ArcLayer arcs={arcs} project={project} duration={arcDuration} reduced={reduced} vehicle={arcVehicle} />}
+          {arcs.length > 0 && <ArcLayer arcs={arcs} project={project} duration={arcDuration} reduced={reduced || !inView} vehicle={arcVehicle} />}
 
           {markers.map((m, i) => {
             const p = project(m.lng, m.lat);
@@ -580,6 +631,11 @@ export function GeoMap({
       )}
 
       {tooltip}
+      {zoomable && (
+        <div className={cx("mr-map__hint", zoomHint && "is-on")} aria-hidden="true">
+          Hold <kbd>{typeof navigator !== "undefined" && /Mac|iP(hone|ad)/.test(navigator.platform) ? "⌘" : "Ctrl"}</kbd> and scroll to zoom
+        </div>
+      )}
 
       {legend && colorScale && (
         <div className={cx("mr-map__legend", legendPosition === "top-left" && "is-top")}>

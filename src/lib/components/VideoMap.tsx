@@ -162,7 +162,7 @@ export const VideoMap = forwardRef<VideoMapHandle, VideoMapProps>(function Video
       greatCircle({ lng: shots[i].pin[0], lat: shots[i].pin[1] }, { lng: s.pin[0], lat: s.pin[1] }, 120).map((ll) => projection(ll) ?? [0, 0]),
     );
     const legKm = shots.slice(1).map((s, i) => distanceKm({ lng: shots[i].pin[0], lat: shots[i].pin[1] }, { lng: s.pin[0], lat: s.pin[1] }));
-    const dots = variant === "dots" ? getLandDots(0.75) : null;
+    const dots = variant === "dots" ? getLandDots(1) : null;
     return { world, projection, shots, legs, legKm, dots };
   }, [stops, W, H, portrait, variant]);
 

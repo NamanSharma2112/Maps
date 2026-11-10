@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { CONTINENTS, extentOutline } from "../data/continents";
 import type { Continent } from "../data/continents";
 import { getCountryRegions } from "../data/world";
+import { regionsNear } from "../data/regions";
 import { GeoMap } from "./GeoMap";
 import type { BaseMapProps } from "./GeoMap";
 
@@ -19,7 +20,13 @@ export function ContinentMap({ continent, neighbours = true, variant = "solid", 
     const members = new Set(def.countries);
     return {
       regions: all.filter((r) => members.has(r.name)),
-      context: neighbours ? all.filter((r) => !members.has(r.name) && r.name !== "Antarctica") : [],
+      // faded neighbours are background: the light data, and only what is near the frame
+      context: neighbours
+        ? regionsNear(
+            getCountryRegions("low").filter((r) => !members.has(r.name) && r.name !== "Antarctica"),
+            [def.extent[0] - 30, def.extent[1] - 20, def.extent[2] + 30, def.extent[3] + 20],
+          )
+        : [],
     };
   }, [def, neighbours]);
   const fit = useMemo(() => extentOutline(def.extent), [def]);

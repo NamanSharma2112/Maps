@@ -88,7 +88,8 @@ function Field({ label, htmlFor, children, aside }: { label: string; htmlFor?: s
 function Slider({ id, value, min, max, step, onChange, suffix }: { id: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; suffix: string }) {
   return (
     <div className="slider">
-      <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))}
+        style={{ ["--fill" as string]: `${((value - min) / (max - min)) * 100}%` }} />
       <output htmlFor={id}>{value}{suffix}</output>
     </div>
   );
@@ -124,6 +125,9 @@ export function Studio() {
   const [showCode, setShowCode] = useState(false);
   const map = useRef<VideoMapHandle>(null);
   const lastTick = useRef(0);
+  const scrubbing = useRef<{ wasPlaying: boolean } | null>(null);
+  const startScrub = () => { if (!scrubbing.current) { scrubbing.current = { wasPlaying: playing }; setPlaying(false); } };
+  const endScrub = () => { const s = scrubbing.current; scrubbing.current = null; if (s?.wasPlaying) setPlaying(true); };
 
   useEffect(() => {
     try { localStorage.setItem(STORE, JSON.stringify(p)); } catch { /* not saved; fine */ }
@@ -258,6 +262,7 @@ ${stops.map((s) => `    { country: "${s.country}"${s.at ? `, at: { lat: ${s.at.l
                       <input
                         type="range" min={1} max={14} step={0.5}
                         value={s.depth ?? (s.kind === "city" ? 6 : 4)}
+                        style={{ ["--fill" as string]: `${(((s.depth ?? (s.kind === "city" ? 6 : 4)) - 1) / 13) * 100}%` }}
                         onChange={(e) => updateStop(s.id, { depth: Number(e.target.value) })}
                         aria-label={`Stop ${i + 1} zoom depth`}
                       />
@@ -307,7 +312,12 @@ ${stops.map((s) => `    { country: "${s.country}"${s.at ? `, at: { lat: ${s.at.l
               subtitle={p.subtitle || undefined}
               outro={p.outro || undefined}
               playing={playing}
-              onProgress={(t, d) => { const now = performance.now(); if (now - lastTick.current > 80) { lastTick.current = now; setTime(t); if (d !== duration) setDuration(d); } }}
+              onProgress={(t, d) => {
+                if (d !== duration) setDuration(d);
+                if (scrubbing.current) return; // the scrubber owns the playhead while dragging
+                const now = performance.now();
+                if (now - lastTick.current > 50) { lastTick.current = now; setTime(t); }
+              }}
             />
           ) : (
             <p className="studio__empty">Add a city or country to start.</p>
@@ -327,7 +337,7 @@ ${stops.map((s) => `    { country: "${s.country}"${s.at ? `, at: { lat: ${s.at.l
           <div className="timeline__track">
             <div className="timeline__marks" aria-hidden="true">
               {duration > 0 && marks.map((m, i) => (
-                <button key={i} type="button" tabIndex={-1} className="timeline__mark" style={{ left: `${(m / duration) * 100}%` }} onClick={() => { map.current?.seek(m); setTime(m); }}>
+                <button key={i} type="button" tabIndex={-1} className="timeline__mark" style={{ left: `calc(9px + (100% - 18px) * ${m / duration})` }} onClick={() => { map.current?.seek(m); setTime(m); }}>
                   {i + 1}
                 </button>
               ))}
@@ -339,8 +349,14 @@ ${stops.map((s) => `    { country: "${s.country}"${s.at ? `, at: { lat: ${s.at.l
               max={duration || 1}
               step={0.01}
               value={Math.min(time, duration || 1)}
+              onPointerDown={startScrub}
+              onPointerUp={endScrub}
+              onPointerCancel={endScrub}
+              onBlur={() => scrubbing.current && endScrub()}
               onChange={(e) => { const v = Number(e.target.value); map.current?.seek(v); setTime(v); }}
+              style={{ ["--fill" as string]: `${duration ? (Math.min(time, duration) / duration) * 100 : 0}%` }}
               aria-label="Playhead"
+              aria-valuetext={`${fmtTime(time / p.speed)} of ${fmtTime(duration / p.speed)}`}
               disabled={recording}
             />
           </div>

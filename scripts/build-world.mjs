@@ -163,3 +163,38 @@ for (const g of topo.objects.countries.geometries) {
 writeFileSync(out, JSON.stringify(topo));
 console.log(`countries: ${topo.objects.countries.geometries.length}, leftover pieces reassigned: ${moved}, dropped as water: ${dropped} → ${out}`);
 rmSync(tmp, { recursive: true, force: true });
+
+// ── low-detail companion for globes and dot placement ─────────────────────────
+// The final world (base + official South Asia), simplified hard. Small on screen, so the loss is
+// invisible, and every point-in-country test runs against ~10x fewer vertices.
+{
+  const lowOut = new URL("../src/lib/data/world-low.topo.json", import.meta.url).pathname;
+  const tmp2 = mkdtempSync(join(tmpdir(), "meridian-low-"));
+  const base = JSON.parse(readFileSync(world, "utf8"));
+  const sa = JSON.parse(readFileSync(out, "utf8"));
+  const saFeatures = topoFeature(sa, sa.objects.countries).features;
+  const replaced = new Set(saFeatures.map((f) => f.properties.name));
+  const features = topoFeature(base, base.objects.countries).features
+    .filter((f) => !replaced.has(f.properties.name) && f.properties.name !== "Siachen Glacier")
+    .concat(saFeatures)
+    .map((f) => ({ ...f, properties: { name: f.properties.name, id: f.id ?? f.properties.name } }));
+  writeFileSync(join(tmp2, "all.json"), JSON.stringify({ type: "FeatureCollection", features }));
+  await mapshaper.runCommands(
+    `-i ${join(tmp2, "all.json")} -simplify 12% keep-shapes -rename-layers countries -o format=topojson id-field=id quantization=50000 ${lowOut}`,
+  );
+  const t = JSON.parse(readFileSync(lowOut, "utf8"));
+  let flipped = 0;
+  for (const g of t.objects.countries.geometries) {
+    g.properties = { name: g.properties.name };
+    const polys = g.type === "Polygon" ? [g.arcs] : g.type === "MultiPolygon" ? g.arcs : [];
+    for (const poly of polys) {
+      if (geoArea(topoFeature(t, { type: "Polygon", arcs: poly })) > 2 * Math.PI) {
+        for (let r = 0; r < poly.length; r++) poly[r] = poly[r].slice().reverse().map((i) => ~i);
+        flipped++;
+      }
+    }
+  }
+  writeFileSync(lowOut, JSON.stringify(t));
+  rmSync(tmp2, { recursive: true, force: true });
+  console.log(`low-detail world: ${t.objects.countries.geometries.length} countries, ${t.arcs.reduce((a, x) => a + x.length, 0)} points, ${flipped} flipped ring(s) fixed`);
+}

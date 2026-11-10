@@ -58,7 +58,7 @@ function useTheme() {
 
 /* ── small UI primitives ────────────────────────────────────── */
 
-function Preview({ code, toolbar, children, footer, minHeight }: { code: string; toolbar?: ReactNode; children: ReactNode; footer?: ReactNode; minHeight?: number }) {
+function Preview({ code, toolbar, children, footer, minHeight, shape = "map" }: { code: string; toolbar?: ReactNode; children: ReactNode; footer?: ReactNode; minHeight?: number; shape?: "map" | "globe" }) {
   const [tab, setTab] = useState<"preview" | "code">("preview");
   return (
     <div className="preview">
@@ -71,7 +71,7 @@ function Preview({ code, toolbar, children, footer, minHeight }: { code: string;
       </div>
       {tab === "preview" ? (
         <>
-          <div className="preview__stage" style={{ minHeight }}>{children}</div>
+          <div className="preview__stage" style={{ minHeight }}><LazyMount shape={shape}>{children}</LazyMount></div>
           {footer}
         </>
       ) : (
@@ -169,6 +169,7 @@ export function NetworkGlobe() {
   return (
     <Section id="globe" title="Globe" lead="A canvas-rendered orthographic globe. Drag to spin with inertia; it eases back into auto-rotation when you let go. Arcs lift off the surface, travel along the great circle and ripple on arrival.">
       <Preview
+        shape="globe"
         code={code}
         toolbar={
           <>
@@ -469,10 +470,10 @@ const GLOBE_STYLES = [
   { name: "DayNightGlobe", note: "Night side follows the real sun", el: <DayNightGlobe autoRotate={4} initialView={{ lat: 20, lng: 78 }} /> },
 ];
 const MAP_STYLES = [
-  { name: "DottedWorldMap", note: "Hex dot lattice, Equal Earth", el: <DottedWorldMap markers={HUB_MARKERS} interactive={false} dotGap={5} /> },
-  { name: "OutlineWorldMap", note: "Borders only, Natural Earth + grid", el: <OutlineWorldMap arcs={HUB_ARCS.slice(0, 5)} /> },
-  { name: "DayNightWorldMap", note: "Live night shadow", el: <DayNightWorldMap markers={HUB_MARKERS.map(({ label, ...m }) => ({ ...m, description: label }))} /> },
-  { name: "MercatorWorldMap", note: "Web Mercator projection", el: <MercatorWorldMap data={WORLD_POPULATION} valueLabel="Population" formatValue={(v) => `${formatNumber(v)} M`} /> },
+  { name: "DottedWorldMap", note: "Hex dot lattice, Equal Earth", el: <DottedWorldMap detail="low" markers={HUB_MARKERS} interactive={false} dotGap={5} /> },
+  { name: "OutlineWorldMap", note: "Borders only, Natural Earth + grid", el: <OutlineWorldMap detail="low" arcs={HUB_ARCS.slice(0, 5)} /> },
+  { name: "DayNightWorldMap", note: "Live night shadow", el: <DayNightWorldMap detail="low" markers={HUB_MARKERS.map(({ label, ...m }) => ({ ...m, description: label }))} /> },
+  { name: "MercatorWorldMap", note: "Web Mercator projection", el: <MercatorWorldMap detail="low" data={WORLD_POPULATION} valueLabel="Population" formatValue={(v) => `${formatNumber(v)} M`} /> },
 ];
 
 function GallerySection() {
@@ -645,16 +646,9 @@ const NAV = [
   { id: "legend-controls", label: "Legend and controls" },
 ];
 
-export default function App() {
-  const { dark, toggle } = useTheme();
-  const [view, setView] = useState<"dev" | "creators">(() => (location.hash === "#creators" ? "creators" : "dev"));
-  useEffect(() => {
-    const on = () => setView(location.hash === "#creators" ? "creators" : "dev");
-    window.addEventListener("hashchange", on);
-    return () => window.removeEventListener("hashchange", on);
-  }, []);
+/** Sidebar with scroll-spy. Its state lives here so scrolling only re-renders this list. */
+function Sidebar() {
   const [active, setActive] = useState("globe");
-
   useEffect(() => {
     const io = new IntersectionObserver(
       (entries) => {
@@ -663,8 +657,30 @@ export default function App() {
       },
       { rootMargin: "-20% 0px -70% 0px" },
     );
-    NAV.forEach((n) => { const el = document.getElementById(n.id); if (el) io.observe(el); });
+    [...NAV.map((n) => n.id), "theming"].forEach((id) => { const el = document.getElementById(id); if (el) io.observe(el); });
     return () => io.disconnect();
+  }, []);
+  return (
+    <aside className="side" aria-label="Components">
+      <div className="side__title">Components</div>
+      {NAV.map((n) => (
+        <a key={n.id} href={`#${n.id}`} className="side__link" aria-current={active === n.id ? "true" : undefined}>
+          {n.label}
+        </a>
+      ))}
+      <div className="side__title side__title--gap">Usage</div>
+      <a href="#theming" className="side__link" aria-current={active === "theming" ? "true" : undefined}>Theming</a>
+    </aside>
+  );
+}
+
+export default function App() {
+  const { dark, toggle } = useTheme();
+  const [view, setView] = useState<"dev" | "creators">(() => (location.hash === "#creators" ? "creators" : "dev"));
+  useEffect(() => {
+    const on = () => setView(location.hash === "#creators" ? "creators" : "dev");
+    window.addEventListener("hashchange", on);
+    return () => window.removeEventListener("hashchange", on);
   }, []);
 
   return (
@@ -726,16 +742,7 @@ export default function App() {
                   </section>
 
         <div className="docs">
-          <aside className="side" aria-label="Components">
-            <div className="side__title">Components</div>
-            {NAV.map((n) => (
-              <a key={n.id} href={`#${n.id}`} className="side__link" aria-current={active === n.id ? "true" : undefined}>
-                {n.label}
-              </a>
-            ))}
-            <div className="side__title side__title--gap">Usage</div>
-            <a href="#theming" className="side__link" aria-current={active === "theming" ? "true" : undefined}>Theming</a>
-          </aside>
+          <Sidebar />
 
           <div className="content">
             <GlobeSection />

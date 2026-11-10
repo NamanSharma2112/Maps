@@ -142,7 +142,7 @@ export function Globe({
     canvas.width = diameter * dpr;
     canvas.height = diameter * dpr;
 
-    const world = getWorld();
+    const world = getWorld("low"); // globes are small on screen: the light copy draws ~4x faster
     const grat = geoGraticule10();
     const projection = geoOrthographic().precision(0.3);
     const path = geoPath(projection, ctx);

@@ -17,6 +17,8 @@ export interface WorldMapProps extends BaseMapProps {
   terminator?: boolean | Date;
   /** Include Antarctica. Default false. */
   antarctica?: boolean;
+  /** "high" (default) uses Natural Earth 1:50m; "low" is ~4x lighter, for small or many maps. */
+  detail?: "high" | "low";
 }
 
 const PROJECTIONS = {
@@ -32,13 +34,14 @@ export function WorldMap({
   graticule = false,
   terminator = false,
   antarctica = false,
+  detail = "high",
   variant = "dots",
   "aria-label": ariaLabel = "World map",
   ...rest
 }: WorldMapProps) {
   const regions = useMemo(
-    () => getCountryRegions().filter((r) => antarctica || (r.name !== "Antarctica" && r.name !== "Fr. S. Antarctic Lands")),
-    [antarctica],
+    () => getCountryRegions(detail).filter((r) => antarctica || (r.name !== "Antarctica" && r.name !== "Fr. S. Antarctic Lands")),
+    [antarctica, detail],
   );
   const make = useMemo(() => PROJECTIONS[projection], [projection]);
   const fit = useMemo(

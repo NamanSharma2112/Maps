@@ -72,7 +72,8 @@
 /* ── flat maps ──────────────────────────────────────────────── */
 .mr-map { width: 100%; overflow: hidden; user-select: none; }
 .mr-map > svg { display: block; width: 100%; height: auto; overflow: visible; }
-.mr-map.is-zoomable > svg { cursor: grab; touch-action: none; }
+.mr-map.is-zoomable > svg { cursor: grab; touch-action: pan-x pan-y pinch-zoom; }
+.mr-map.is-zoomable.is-zoomed > svg { touch-action: none; } /* once zoomed in, one finger pans the map */
 /* neighbouring land fades out at the frame instead of ending in a hard edge */
 .mr-map.has-context > svg {
   -webkit-mask-image: linear-gradient(to right, transparent, #000 5%, #000 95%, transparent), linear-gradient(to bottom, transparent, #000 5%, #000 95%, transparent);
@@ -196,7 +197,7 @@
 .mr-legend__items { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .mr-legend__item { display: inline-flex; align-items: center; gap: 6px; }
 .mr-legend__dot { width: 8px; height: 8px; border-radius: 50%; }
-.mr-map__legend { position: absolute; left: 12px; bottom: 12px; padding: 8px 10px; border-radius: 8px; background: color-mix(in oklab, var(--mr-background) 82%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.mr-map__legend { position: absolute; left: 12px; bottom: 12px; padding: 8px 10px; border-radius: 8px; background: color-mix(in oklab, var(--mr-background) 90%, transparent); }
 
 /* ── controls ───────────────────────────────────────────────── */
 .mr-controls {
@@ -316,3 +317,18 @@
 @media (prefers-reduced-motion: reduce) { .mr-ranking__bar { animation: none; } }
 
 .mr-map__legend.is-top { top: 12px; bottom: auto; }
+
+/* zoom hint: the wheel scrolls the page unless Ctrl/⌘ is held */
+.mr-map__hint {
+  position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+  background: color-mix(in oklab, var(--mr-foreground) 38%, transparent); color: var(--mr-background);
+  font: 500 14px/1 var(--mr-font); opacity: 0; transition: opacity 180ms ease;
+}
+.mr-map__hint.is-on { opacity: 1; }
+.mr-map__hint kbd {
+  margin: 0 6px; padding: 3px 7px; border-radius: 5px; background: var(--mr-background); color: var(--mr-foreground);
+  font: 600 12px/1 var(--mr-font-mono);
+}
+/* nothing animates while a map is off screen */
+.mr-map:not(.is-visible) .mr-marker__pulse,
+.mr-map:not(.is-visible) .mr-enter { animation-play-state: paused; }

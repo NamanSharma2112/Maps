@@ -30,7 +30,7 @@ export function IndiaMap({
 }: IndiaMapProps) {
   const regions = useMemo(() => getIndiaStates(), []);
   const context = useMemo(
-    () => (neighbours ? getCountryRegions().filter((r) => NEIGHBOURS.includes(r.name)) : []),
+    () => (neighbours ? getCountryRegions("low").filter((r) => NEIGHBOURS.includes(r.name)) : []),
     [neighbours],
   );
   const fit = useMemo<FeatureCollection>(
