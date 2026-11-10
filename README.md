@@ -18,13 +18,16 @@ Animated, themeable React components for maps and globes. Dotted or solid land, 
 | `ContinentMap` | One continent per map, each with its own equal-area projection. Presets: `AfricaMap`, `AsiaMap`, `EuropeMap`, `NorthAmericaMap`, `SouthAmericaMap`, `OceaniaMap`, `AntarcticaMap`. |
 | Presets | `DottedGlobe`, `SolidGlobe`, `WireframeGlobe`, `DayNightGlobe`, `DottedWorldMap`, `OutlineWorldMap`, `DayNightWorldMap`, `MercatorWorldMap`. Each takes every prop of its base component. |
 | `VideoMap` | Animated route map for YouTube (16:9), Reels / Shorts (9:16), 1:1 and 4:5. Camera flies country to country; `ref.record()` exports video, `ref.snapshot()` a PNG; theme, green-screen or transparent background. |
+| `CountryMap` | Any of 240 countries on its own, framed in its own projection, with built-in cities and animated plane `trips` between them. |
+| `RankingBars` | Animated bar ranking that highlights in step with a map. |
+| `MapSkeleton` | Shimmering placeholder; maps and globes show it automatically while they load, or pass `loading`. |
 | `MapLegend` | Sequential ramp or categorical key using the same tokens. |
 | `MapControls` | Zoom in / out / reset buttons (built into zoomable maps). |
 
 ## Install
 
 ```bash
-npm install github:NamanSharma2112/Maps
+npm i github:NamanSharma2112/Maps
 ```
 
 The `prepare` script builds `dist/` on install. Peer dependencies: `react` and `react-dom` 18 or later.
@@ -77,6 +80,13 @@ import "meridian-ui/styles.css";
 | `onRegionClick`, `onRegionHover` | `(region) => void` | | `{ id, name, value }` |
 | `dotGap` | `number` | `7` | Pixels between dots |
 | `renderTooltip` | `(region) => ReactNode` | | Custom tooltip body |
+| `bubbles` | `MapBubble[]` | `[]` | Proportional circles (or spikes with `bubbleStyle="spike"`) |
+| `arcVehicle` | `"dot" \| "plane"` | `"dot"` | What travels along arcs |
+| `loading` | `boolean` | `false` | Show a skeleton instead of the map |
+
+## Creator Studio
+
+The docs site has a full-screen editor at `#creators`: build a route from cities or countries, set the zoom depth for each stop, pick a frame (16:9, 9:16, 1:1, 4:5), theme, brand colour, captions and timing, scrub the timeline, then export video (up to 4K, 60 fps) or a PNG. Projects save in the browser.
 
 ## Theming
 
@@ -105,7 +115,8 @@ npm run build      # library (dist/) + docs site (dist-demo/)
 
 ## Data
 
-- Countries and land: [Natural Earth](https://www.naturalearthdata.com/) 1:110m via [world-atlas](https://github.com/topojson/world-atlas). Public domain.
+- Countries and land: [Natural Earth](https://www.naturalearthdata.com/) 1:50m via [world-atlas](https://github.com/topojson/world-atlas), lightly simplified (`scripts/build-world.mjs`). Public domain.
+- Cities: 180+ capitals and major cities, checked by tests to sit inside their own country.
 - **India is drawn on its official boundary in every component** (`Globe`, `WorldMap`, `ContinentMap`, `IndiaMap`): all of Jammu & Kashmir and Ladakh, including PoK, Gilgit-Baltistan, Aksai Chin and the Shaksgam Valley, plus Arunachal Pradesh, as depicted by the Survey of India. `scripts/build-world.mjs` replaces Natural Earth's India with the outline of the 36 states and union territories and trims neighbouring countries to fit around it; tests check the disputed areas fall inside India.
 - Indian states and union territories: [DataMeet India community](https://github.com/datameet/maps) "Admin2", simplified. [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). `IndiaMap` shows this credit by default.
 

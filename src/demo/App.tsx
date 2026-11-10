@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { geoCentroid } from "d3-geo";
 import type { ReactNode } from "react";
 import {
   ContinentMap,
@@ -15,17 +16,22 @@ import {
   OutlineWorldMap,
   DayNightWorldMap,
   MercatorWorldMap,
-  VideoMap,
+  CountryMap,
+  RankingBars,
+  citiesIn,
+  getCountryRegions,
+  CITIES as CITY_LIST,
   CONTINENTS,
   formatCompact,
   formatNumber,
 } from "../lib";
-import type { Continent, LatLng, Region, VideoAspect, VideoMapHandle, VideoStop, VideoTheme } from "../lib";
+import type { Continent, LatLng, MapBubble, Region } from "../lib";
 import { CITIES, HUB_ARCS, HUB_MARKERS, INDIA_CITIES, INDIA_POPULATION_2011, WORLD_POPULATION } from "./data";
-import { Code, CopyButton } from "./Code";
+import { Code } from "./Code";
+import { Segmented, Toggle, LazyMount, InstallTabs } from "./ui";
+import { Studio } from "./Studio";
 
 const REPO = "https://github.com/NamanSharma2112/Maps";
-const INSTALL = "npm install github:NamanSharma2112/Maps";
 
 /* ── theme ──────────────────────────────────────────────────── */
 
@@ -51,27 +57,6 @@ function useTheme() {
 }
 
 /* ── small UI primitives ────────────────────────────────────── */
-
-function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; label: string }) {
-  return (
-    <div className="seg" role="radiogroup" aria-label={label}>
-      {options.map((o) => (
-        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} className="seg__btn" onClick={() => onChange(o.value)}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Toggle({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: ReactNode }) {
-  return (
-    <button type="button" role="switch" aria-checked={checked} className="switch" onClick={() => onChange(!checked)}>
-      <span className="switch__track"><span className="switch__thumb" /></span>
-      {children}
-    </button>
-  );
-}
 
 function Preview({ code, toolbar, children, footer, minHeight }: { code: string; toolbar?: ReactNode; children: ReactNode; footer?: ReactNode; minHeight?: number }) {
   const [tab, setTab] = useState<"preview" | "code">("preview");
@@ -422,7 +407,7 @@ function ContinentSection() {
         {CONTINENT_KEYS.map((c) => (
           <button key={c} type="button" role="listitem" className="continent-card" aria-pressed={continent === c} onClick={() => setContinent(c)}>
             <div className="continent-card__map">
-              <ContinentMap continent={c} interactive={false} neighbours={false} aria-label={`${CONTINENTS[c].name} thumbnail`} />
+              <LazyMount aspect={CONTINENTS[c].aspect}><ContinentMap continent={c} interactive={false} neighbours={false} aria-label={`${CONTINENTS[c].name} thumbnail`} /></LazyMount>
             </div>
             <div className="continent-card__meta">
               <span>{SHORT[c]}</span>
@@ -497,7 +482,7 @@ function GallerySection() {
       <div className="gallery gallery--globes">
         {GLOBE_STYLES.map((g) => (
           <figure key={g.name} className="gallery__card">
-            <div className="gallery__stage">{g.el}</div>
+            <div className="gallery__stage"><LazyMount shape={g.name.includes("Globe") ? "globe" : "map"}>{g.el}</LazyMount></div>
             <figcaption><code>{`<${g.name} />`}</code><span>{g.note}</span></figcaption>
           </figure>
         ))}
@@ -506,7 +491,7 @@ function GallerySection() {
       <div className="gallery gallery--maps">
         {MAP_STYLES.map((g) => (
           <figure key={g.name} className="gallery__card">
-            <div className="gallery__stage">{g.el}</div>
+            <div className="gallery__stage"><LazyMount shape={g.name.includes("Globe") ? "globe" : "map"}>{g.el}</LazyMount></div>
             <figcaption><code>{`<${g.name} />`}</code><span>{g.note}</span></figcaption>
           </figure>
         ))}
@@ -516,151 +501,131 @@ function GallerySection() {
 }
 
 
-const STORIES: Record<string, { title: string; subtitle: string; stops: VideoStop[] }> = {
-  trip: {
-    title: "Delhi to New York",
-    subtitle: "Via London",
-    stops: [
-      { country: "India", at: CITIES.delhi, label: "New Delhi, India" },
-      { country: "United Kingdom", at: CITIES.london, label: "London, UK" },
-      { country: "United States of America", at: CITIES.newYork, label: "New York, USA" },
-    ],
-  },
-  asia: {
-    title: "Asia in 60 seconds",
-    subtitle: "Five countries, one route",
-    stops: [{ country: "India" }, { country: "Thailand" }, { country: "Vietnam" }, { country: "China" }, { country: "Japan" }],
-  },
-  europe: {
-    title: "Interrail summer",
-    subtitle: "Paris → Rome",
-    stops: [{ country: "France" }, { country: "Switzerland" }, { country: "Austria" }, { country: "Italy" }],
-  },
-};
 
-function save(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
-}
+/* ── any country ─────────────────────────────────────────────── */
 
-function VideoSection() {
-  const [aspect, setAspect] = useState<VideoAspect>("16:9");
-  const [bg, setBg] = useState<"theme" | "green" | "transparent">("theme");
-  const [variant, setVariant] = useState<"solid" | "dots">("solid");
-  const [story, setStory] = useState<keyof typeof STORIES>("trip");
-  const [theme, setTheme] = useState<VideoTheme>("midnight");
-  const [routeStyle, setRouteStyle] = useState<"dashed" | "solid" | "glow">("glow");
-  const [vehicle, setVehicle] = useState<"plane" | "dot">("plane");
-  const [caption, setCaption] = useState<"lower-third" | "pill">("lower-third");
-  const [speedX, setSpeedX] = useState<"1" | "1.5" | "2">("1");
-  const [extras, setExtras] = useState({ progress: true, vignette: true, distance: true });
-  const [status, setStatus] = useState("");
-  const map = useRef<VideoMapHandle>(null);
-  const s = STORIES[story];
+const ALL_COUNTRIES = getCountryRegions().map((r) => r.name).filter((n) => n !== "Antarctica").sort();
 
-  const record = async () => {
-    if (!map.current) return;
-    setStatus(`Recording ${Math.round(map.current.duration)} s…`);
-    try {
-      const blob = await map.current.record();
-      save(blob, `map-${story}-${aspect.replace(":", "x")}.${blob.type.includes("mp4") ? "mp4" : "webm"}`);
-      setStatus("Saved the video. If no file appeared, this page cannot download — run the docs locally or on your own deployment.");
-    } catch (e) {
-      setStatus((e as Error).message);
-    }
-  };
-  const frame = async () => {
-    const blob = await map.current?.snapshot();
-    if (blob) { save(blob, `map-${story}-${aspect.replace(":", "x")}.png`); setStatus("Saved a PNG frame."); }
+function CountrySection() {
+  const [name, setName] = useState("Japan");
+  const [draft, setDraft] = useState("Japan");
+  const [variant, setVariant] = useState<"solid" | "dots" | "outline">("solid");
+  const [showCities, setShowCities] = useState(true);
+  const [showTrips, setShowTrips] = useState(true);
+  const [fit, setFit] = useState<"mainland" | "all">("mainland");
+  const cities = citiesIn(name);
+  const trips = showTrips ? cities.slice(0, 4).slice(1).map((c, i) => ({ from: (i === 0 ? cities[0] : cities[i]).name, to: c.name })) : [];
+  const pick = (v: string) => {
+    setDraft(v);
+    const hit = ALL_COUNTRIES.find((n) => n.toLowerCase() === v.trim().toLowerCase());
+    if (hit) setName(hit);
   };
 
-  const code = `import { VideoMap } from "meridian-ui";
+  const code = `import { CountryMap } from "meridian-ui";
 
-const ref = useRef<VideoMapHandle>(null);
-
-<VideoMap
-  ref={ref}
-  aspect="${aspect}"            // 16:9 YouTube · 9:16 Reels/Shorts · 1:1 · 4:5
-  resolution={1080}
-  background="${bg}"       // theme · green (chroma key) · transparent
-  theme="${theme}"          // auto · light · dark · midnight · sand
-  routeStyle="${routeStyle}"  vehicle="${vehicle}"  captionStyle="${caption}"
-  speed={${speedX}}  progress={${extras.progress}}  vignette={${extras.vignette}}  showDistance={${extras.distance}}
-  variant="${variant}"
-  title="${s.title}"
-  stops={[
-${s.stops.map((x) => `    { country: "${x.country}"${x.label ? `, label: "${x.label}"` : ""} },`).join("\n")}
-  ]}
-/>
-
-const video = await ref.current.record();   // WebM (MP4 on Safari), full timeline
-const png = await ref.current.snapshot();   // current frame`;
+<CountryMap
+  country="${name}"
+  variant="${variant}"${showCities ? "" : "\n  cities={false}"}${trips.length ? `
+  trips={[
+${trips.map((t) => `    { from: "${t.from}", to: "${t.to}" },`).join("\n")}
+  ]}` : ""}${fit === "all" ? `\n  fit="all"` : ""}
+  zoomable
+/>`;
 
   return (
-    <Section id="video-map" title="Video map" badge="For creators" lead="An animated route map sized for YouTube, Reels and Shorts. The camera flies country to country while the route draws. Export the whole run as a video, or grab a frame as a PNG. Use the green background to key it into your edit, or a transparent one to drop it straight in.">
+    <Section id="country-map" title="Country map" badge={`${ALL_COUNTRIES.length} countries`} lead="Any country on its own, framed in an equal-area projection centred on it. Its cities come built in, and trips fly a plane between them. Pass city names or coordinates.">
+      <datalist id="country-list">{ALL_COUNTRIES.map((n) => <option key={n} value={n} />)}</datalist>
       <Preview
         code={code}
         toolbar={
           <>
-            <Segmented label="Story" value={story} onChange={setStory} options={[{ value: "trip", label: "Trip" }, { value: "asia", label: "Asia" }, { value: "europe", label: "Europe" }]} />
-            <Segmented label="Frame" value={aspect} onChange={setAspect} options={[{ value: "16:9", label: "16:9" }, { value: "9:16", label: "9:16" }, { value: "1:1", label: "1:1" }, { value: "4:5", label: "4:5" }]} />
-            <Segmented label="Background" value={bg} onChange={setBg} options={[{ value: "theme", label: "Theme" }, { value: "green", label: "Green" }, { value: "transparent", label: "Clear" }]} />
-            <Segmented label="Land style" value={variant} onChange={setVariant} options={[{ value: "solid", label: "Solid" }, { value: "dots", label: "Dots" }]} />
+            <input className="input input--sm" list="country-list" value={draft} onChange={(e) => pick(e.target.value)} aria-label="Country" placeholder="Type a country…" />
+            <Segmented label="Land style" value={variant} onChange={setVariant} options={[{ value: "solid", label: "Solid" }, { value: "dots", label: "Dots" }, { value: "outline", label: "Outline" }]} />
+            <Segmented label="Framing" value={fit} onChange={setFit} options={[{ value: "mainland", label: "Mainland" }, { value: "all", label: "All land" }]} />
+            <Toggle checked={showCities} onChange={setShowCities}>Cities</Toggle>
+            <Toggle checked={showTrips} onChange={setShowTrips}>Trips</Toggle>
           </>
         }
         footer={
-          <>
-          <div className="preview__foot studio">
-            <Segmented label="Theme" value={theme} onChange={setTheme} options={[{ value: "auto", label: "Auto" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }, { value: "midnight", label: "Midnight" }, { value: "sand", label: "Sand" }]} />
-            <Segmented label="Route" value={routeStyle} onChange={setRouteStyle} options={[{ value: "glow", label: "Glow" }, { value: "dashed", label: "Dashed" }, { value: "solid", label: "Solid" }]} />
-            <Segmented label="Vehicle" value={vehicle} onChange={setVehicle} options={[{ value: "plane", label: "Plane" }, { value: "dot", label: "Dot" }]} />
-            <Segmented label="Caption" value={caption} onChange={setCaption} options={[{ value: "lower-third", label: "Lower third" }, { value: "pill", label: "Pill" }]} />
-            <Segmented label="Speed" value={speedX} onChange={setSpeedX} options={[{ value: "1", label: "1×" }, { value: "1.5", label: "1.5×" }, { value: "2", label: "2×" }]} />
-            <Toggle checked={extras.progress} onChange={(v) => setExtras({ ...extras, progress: v })}>Progress</Toggle>
-            <Toggle checked={extras.vignette} onChange={(v) => setExtras({ ...extras, vignette: v })}>Vignette</Toggle>
-            <Toggle checked={extras.distance} onChange={(v) => setExtras({ ...extras, distance: v })}>Distance</Toggle>
-          </div>
           <div className="preview__foot">
             <div className="chips">
-              <button type="button" className="chip" onClick={() => map.current?.replay()}>Replay</button>
-              <button type="button" className="chip chip--primary" onClick={record}>Record video</button>
-              <button type="button" className="chip" onClick={frame}>Save frame</button>
+              {["India", "Japan", "United States of America", "Brazil", "Australia", "France", "Egypt"].map((c) => (
+                <button key={c} type="button" className="chip" aria-pressed={name === c} onClick={() => pick(c)}>{c === "United States of America" ? "USA" : c}</button>
+              ))}
             </div>
-            <span className="muted" aria-live="polite">{status || "1080p output. Recording plays the route once in real time."}</span>
+            <span className="muted">{cities.length ? `${cities.length} built-in ${cities.length === 1 ? "city" : "cities"}` : "No built-in cities: add markers"}</span>
           </div>
-          </>
         }
       >
-        <div className={`video-stage video-stage--${aspect.replace(":", "x")}${bg === "transparent" ? " is-checker" : ""}`}>
-          <VideoMap ref={map} key={`${story}-${aspect}-${variant}`} aspect={aspect} background={bg} variant={variant} stops={s.stops} title={s.title} subtitle={s.subtitle}
-            theme={theme} routeStyle={routeStyle} vehicle={vehicle} captionStyle={caption} speed={Number(speedX)}
-            progress={extras.progress} vignette={extras.vignette} showDistance={extras.distance} />
+        <div className="country-stage">
+          <CountryMap key={`${name}-${fit}`} country={name} variant={variant} cities={showCities} trips={trips} fit={fit} zoomable dotGap={6} />
         </div>
       </Preview>
       <PropsTable
         rows={[
-          ["stops", "VideoStop[]", "—", "{ country?, at?, zoom?, label? } — the camera frames each in turn."],
-          ["aspect", '"16:9" | "9:16" | "1:1" | "4:5"', '"16:9"', "Frame shape for YouTube, Reels / Shorts / TikTok, or feed posts."],
-          ["resolution", "number", "1080", "Pixels on the short side of the exported frame."],
-          ["background", '"theme" | "green" | "transparent" | color', '"theme"', "Green is chroma-key #00b140; transparent keeps alpha in PNG and WebM."],
-          ["variant", '"solid" | "dots"', '"solid"', "Land style."],
-          ["route", "boolean", "true", "Dashed travelling route between stops."],
-          ["theme", '"auto" | "light" | "dark" | "midnight" | "sand"', '"auto"', "Colour theme; auto follows the page tokens."],
-          ["routeStyle", '"dashed" | "solid" | "glow" | "none"', '"dashed"', "How the route is drawn."],
-          ["vehicle", '"plane" | "dot" | "none"', '"plane"', "Travels the route, turning with its heading."],
-          ["captionStyle", '"lower-third" | "pill" | "none"', '"lower-third"', "Broadcast card with stop number and distance, or a centred pill."],
-          ["progress / vignette / showDistance", "boolean", "true", "Timeline bar, darkened edges, running distance."],
-          ["speed", "number", "1", "Playback speed multiplier."],
-          ["flight / hold", "number", "1.8 / 1.6", "Seconds flying between stops and holding on each."],
-          ["title / subtitle", "string", "—", "Text in the top-left corner."],
-          ["ref.record()", "() => Promise<Blob>", "—", "Plays the timeline once and returns the video."],
-          ["ref.snapshot()", "() => Promise<Blob>", "—", "The current frame as PNG."],
+          ["country", "string", "—", "Any country by name or ISO numeric id."],
+          ["cities", "boolean", "true", "Marks the country's built-in cities; the capital pulses."],
+          ["trips", "{ from, to }[]", "[]", "Plane flights between city names or { lat, lng } points."],
+          ["fit", '"mainland" | "all"', '"mainland"', "Frame the largest landmass, or every territory."],
+          ["neighbours", "boolean", "true", "Surrounding countries drawn faded."],
+          ["arcVehicle", '"plane" | "dot"', '"plane"', "What flies along trips and arcs."],
+          ...SHARED_PROPS,
+        ]}
+      />
+    </Section>
+  );
+}
+
+/* ── charts on maps ──────────────────────────────────────────── */
+
+const POP_BUBBLES: MapBubble[] = getCountryRegions()
+  .filter((r) => WORLD_POPULATION[r.name] !== undefined)
+  .map((r) => {
+    const [lng, lat] = geoCentroid(r.geometry);
+    return { lat, lng, value: WORLD_POPULATION[r.name], label: r.name };
+  });
+
+function ChartsSection() {
+  const [mode, setMode] = useState<"choropleth" | "bubbles" | "spikes">("bubbles");
+  const [hl, setHl] = useState<string | null>(null);
+  const code = `import { WorldMap, RankingBars } from "meridian-ui";
+
+${mode === "choropleth" ? `<WorldMap variant="solid" data={population} legend="Population, millions" />` : `<WorldMap
+  variant="dots"
+  bubbles={countries.map((c) => ({ lat: c.lat, lng: c.lng, value: c.population, label: c.name }))}
+  bubbleStyle="${mode === "spikes" ? "spike" : "circle"}"
+/>`}
+
+<RankingBars data={population} limit={8} title="Most populous" />`;
+  return (
+    <Section id="charts" title="Charts on maps" badge="New" lead="Show quantities three ways: a choropleth, proportional bubbles, or spikes. Each animates in. Pair the map with RankingBars, which highlights in step as you hover either one.">
+      <Preview
+        code={code}
+        toolbar={<Segmented label="Chart" value={mode} onChange={setMode} options={[{ value: "bubbles", label: "Bubbles" }, { value: "spikes", label: "Spikes" }, { value: "choropleth", label: "Choropleth" }]} />}
+      >
+        <div className="charts">
+          <WorldMap
+            key={mode}
+            variant={mode === "choropleth" ? "solid" : "dots"}
+            data={mode === "choropleth" ? WORLD_POPULATION : undefined}
+            bubbles={mode === "choropleth" ? [] : POP_BUBBLES}
+            bubbleStyle={mode === "spikes" ? "spike" : "circle"}
+            valueLabel="Population"
+            formatValue={(v) => `${formatNumber(v)} M`}
+            legend={mode === "choropleth" ? "Population, millions" : false}
+            selected={hl}
+            onRegionHover={(r) => setHl(r?.name ?? null)}
+            dotGap={6}
+          />
+          <RankingBars data={WORLD_POPULATION} limit={8} title="Most populous, millions" highlight={hl} onHover={setHl} format={(v) => formatNumber(v)} />
+        </div>
+      </Preview>
+      <PropsTable
+        rows={[
+          ["bubbles", "MapBubble[]", "[]", "{ lat, lng, value, label?, color? } on any flat map."],
+          ["bubbleStyle", '"circle" | "spike"', '"circle"', "Circle area or spike height scales with value."],
+          ["bubbleSize", "number", "26", "Largest radius in px (spikes reach 3×)."],
+          ["RankingBars data", "Record<string, number> | rows", "—", "Sorted, animated bars; limit, title, format, highlight, onHover."],
         ]}
       />
     </Section>
@@ -673,6 +638,8 @@ const NAV = [
   { id: "globe", label: "Globe" },
   { id: "world-map", label: "World map" },
   { id: "gallery", label: "Styles gallery" },
+  { id: "country-map", label: "Country map" },
+  { id: "charts", label: "Charts on maps" },
   { id: "india-map", label: "India map" },
   { id: "continent-map", label: "Continent maps" },
   { id: "legend-controls", label: "Legend and controls" },
@@ -729,16 +696,7 @@ export default function App() {
 
       <main id="top">
         {view === "creators" ? (
-          <div className="docs docs--single">
-            <div className="content">
-              <section className="creator-hero">
-                <span className="eyebrow">For YouTube, Instagram and TikTok creators</span>
-                <h1>Map animations for your videos.</h1>
-                <p className="hero__lead">Pick a route, frame and style, then record. You get a 1080p video or PNG, on your theme, green screen or a transparent background. No editing software needed.</p>
-              </section>
-              <VideoSection />
-            </div>
-          </div>
+          <Studio />
         ) : (<>
         <section className="hero">
           <div className="hero__copy">
@@ -748,10 +706,7 @@ export default function App() {
               Animated, themeable components for the world, India and every continent. Dotted or solid land, choropleth data,
               pulsing markers and travelling arcs, drawn locally from Natural Earth and DataMeet boundaries.
             </p>
-            <div className="install">
-              <code><span className="install__prompt">$</span>{INSTALL}</code>
-              <CopyButton text={INSTALL} label="Copy install command" />
-            </div>
+            <InstallTabs />
             <div className="hero__actions">
               <a className="btn btn--primary" href="#globe">Browse components</a>
               <a className="btn" href="#creators">Video maps for creators</a>
@@ -762,6 +717,13 @@ export default function App() {
             <Globe markers={HUB_MARKERS} arcs={HUB_ARCS} initialView={{ lat: 18, lng: 55 }} autoRotate={6} aria-label="Globe with animated routes between 14 cities" />
           </div>
         </section>
+        <section className="stats" aria-label="At a glance">
+          <div><b>11</b><span>Components</span></div>
+          <div><b>15</b><span>Ready-made presets</span></div>
+          <div><b>{ALL_COUNTRIES.length}</b><span>Countries and territories</span></div>
+          <div><b>36</b><span>Indian states and UTs</span></div>
+          <div><b>{CITY_LIST.length}</b><span>Built-in cities</span></div>
+                  </section>
 
         <div className="docs">
           <aside className="side" aria-label="Components">
@@ -779,6 +741,8 @@ export default function App() {
             <GlobeSection />
             <WorldSection />
             <GallerySection />
+            <CountrySection />
+            <ChartsSection />
             <IndiaSection />
             <ContinentSection />
             <PartsSection />

@@ -51,6 +51,14 @@ export interface VideoMapProps {
   speed?: number;
   title?: string;
   subtitle?: string;
+  /** Brand colour for the route, pins and highlights. Overrides the theme accent. */
+  accent?: string;
+  /** End card text shown after the last stop, e.g. "Subscribe for part 2". */
+  outro?: string;
+  /** Play or pause the preview. Default true. */
+  playing?: boolean;
+  /** Called every frame with the playhead and total length, in seconds. */
+  onProgress?: (time: number, duration: number) => void;
   /** Loop the preview. Default true. */
   loop?: boolean;
   /** Frames per second for recording. Default 30. */
@@ -66,6 +74,8 @@ export interface VideoMapHandle {
   record: () => Promise<Blob>;
   /** The current frame as a PNG. */
   snapshot: () => Promise<Blob>;
+  /** Jump to a time in seconds. */
+  seek: (seconds: number) => void;
   /** Total length of one run in seconds. */
   duration: number;
 }
@@ -84,6 +94,7 @@ const easeOut = (t: number) => 1 - (1 - t) ** 3;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const INTRO = 0.8; // seconds of establishing shot before the first flight
 const OUTRO = 1.2;
+const END_CARD = 2.2; // extra seconds when an outro card is shown
 const fmtKm = (km: number) => `${Math.round(km).toLocaleString("en")} km`;
 
 /** Canvas world map with a scripted camera, made to be recorded for YouTube, Reels and Shorts. */
@@ -106,6 +117,10 @@ export const VideoMap = forwardRef<VideoMapHandle, VideoMapProps>(function Video
     speed = 1,
     title,
     subtitle,
+    accent,
+    outro,
+    playing = true,
+    onProgress,
     loop = true,
     fps = 30,
     className,
@@ -115,7 +130,9 @@ export const VideoMap = forwardRef<VideoMapHandle, VideoMapProps>(function Video
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const clock = useRef({ start: performance.now(), once: false, onEnd: null as null | (() => void) });
+  const clock = useRef({ start: performance.now(), once: false, onEnd: null as null | (() => void), paused: false, pausedT: 0 });
+  const progressRef = useRef(onProgress);
+  progressRef.current = onProgress;
 
   const [rw, rh] = SIZES[aspect];
   const W = Math.round(rw >= rh ? (resolution * rw) / rh : resolution);
@@ -150,7 +167,18 @@ export const VideoMap = forwardRef<VideoMapHandle, VideoMapProps>(function Video
   }, [stops, W, H, portrait, variant]);
 
   const seg = flight + hold;
-  const duration = INTRO + Math.max(1, scene.shots.length) * seg + OUTRO;
+  const outroLen = outro ? END_CARD : 0;
+  const duration = INTRO + Math.max(1, scene.shots.length) * seg + OUTRO + outroLen;
+  const speedRef = useRef(speed);
+
+  // play / pause keeps the playhead where it is
+  useEffect(() => {
+    const c = clock.current;
+    const now = performance.now();
+    if (!playing && !c.paused) { c.pausedT = Math.max(0, ((now - c.start) / 1000) * speedRef.current); c.paused = true; }
+    if (playing && c.paused) { c.start = now - (c.pausedT * 1000) / speedRef.current; c.paused = false; }
+  }, [playing]);
+  speedRef.current = speed;
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -159,10 +187,11 @@ export const VideoMap = forwardRef<VideoMapHandle, VideoMapProps>(function Video
     const v = (n: string, f: string) => css.getPropertyValue(n).trim() || f;
     const font = css.fontFamily || "system-ui, sans-serif";
     const mono = v("--mr-font-mono", "ui-monospace, monospace");
-    const pal: Palette =
+    const pal: Palette = { ...(
       theme === "auto"
         ? { bg: v("--mr-background", "#fff"), land: v("--mr-land", "#ddd"), border: v("--mr-region-stroke", "#fff"), dot: v("--mr-dot", "#bbb"), accent: v("--mr-accent", "#6366f1"), text: v("--mr-foreground", "#111"), card: v("--mr-foreground", "#111"), cardText: v("--mr-background", "#fff") }
-        : PALETTES[theme];
+        : PALETTES[theme]) };
+    if (accent) pal.accent = accent;
     const bg = background === "theme" ? pal.bg : background === "green" ? "#00b140" : background === "transparent" ? null : background;
     const overlayText = background === "theme" ? pal.text : "#ffffff";
     const lightBg = theme === "light" || theme === "sand" || (theme === "auto" && !document.documentElement.classList.contains("dark"));
@@ -203,12 +232,13 @@ export const VideoMap = forwardRef<VideoMapHandle, VideoMapProps>(function Video
     };
 
     const draw = (now: number) => {
-      let t = Math.max(0, ((now - clock.current.start) / 1000) * speed);
-      if (t > duration) {
+      let t = clock.current.paused ? clock.current.pausedT : Math.max(0, ((now - clock.current.start) / 1000) * speed);
+      if (t > duration && !clock.current.paused) {
         if (clock.current.once) { clock.current.once = false; clock.current.onEnd?.(); clock.current.onEnd = null; }
         if (loop) { clock.current.start = now; t = 0; } else t = duration;
       }
-      const cam = camera(Math.min(t, duration - OUTRO));
+      progressRef.current?.(Math.min(t, duration), duration);
+      const cam = camera(Math.min(t, duration - OUTRO - outroLen));
       const fadeIn = easeOut(clamp(t / 0.5, 0, 1));
 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -373,6 +403,27 @@ export const VideoMap = forwardRef<VideoMapHandle, VideoMapProps>(function Video
         ctx.globalAlpha = 1;
       }
 
+      if (outro) {
+        const start = duration - outroLen;
+        const a = easeOut(clamp((t - start) / 0.5, 0, 1));
+        if (a > 0) {
+          ctx.globalAlpha = a * 0.82;
+          ctx.fillStyle = bg ?? "rgba(0,0,0,.6)";
+          ctx.fillRect(0, 0, W, H);
+          ctx.globalAlpha = a;
+          const size = (portrait ? 64 : 76) * unit;
+          ctx.font = `700 ${size}px ${font}`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = overlayText;
+          ctx.fillText(outro, W / 2, H / 2 - (1 - a) * 16 * unit, W - 128 * unit);
+          ctx.fillStyle = pal.accent;
+          ctx.beginPath(); ctx.roundRect(W / 2 - 48 * unit, H / 2 + size * 0.85, 96 * unit, 8 * unit, 4 * unit); ctx.fill();
+          ctx.textAlign = "start";
+          ctx.globalAlpha = 1;
+        }
+      }
+
       if (progress && shots.length) {
         const y = H - m * 0.6, x0 = m, x1 = W - m;
         const p = clamp((t - INTRO) / (shots.length * seg), 0, 1);
@@ -396,13 +447,18 @@ export const VideoMap = forwardRef<VideoMapHandle, VideoMapProps>(function Video
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [scene, W, H, unit, portrait, seg, flight, hold, duration, speed, loop, theme, background, routeStyle, vehicle, captionStyle, showDistance, progress, vignette, title, subtitle]);
+  }, [scene, W, H, unit, portrait, seg, flight, hold, duration, outroLen, speed, loop, theme, accent, outro, background, routeStyle, vehicle, captionStyle, showDistance, progress, vignette, title, subtitle]);
 
   useImperativeHandle(
     ref,
     () => ({
       duration: duration / speed,
-      replay: () => { clock.current.start = performance.now(); },
+      replay: () => { clock.current.start = performance.now(); clock.current.pausedT = 0; },
+      seek: (sec: number) => {
+        const t = clamp(sec, 0, duration);
+        clock.current.pausedT = t;
+        clock.current.start = performance.now() - (t * 1000) / speed;
+      },
       snapshot: () =>
         new Promise<Blob>((resolve, reject) =>
           canvasRef.current!.toBlob((b) => (b ? resolve(b) : reject(new Error("Could not read the canvas"))), "image/png"),
@@ -418,7 +474,7 @@ export const VideoMap = forwardRef<VideoMapHandle, VideoMapProps>(function Video
           rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
           rec.onstop = () => resolve(new Blob(chunks, { type: mimeType ?? "video/webm" }));
           rec.onerror = () => reject(new Error("Recording failed"));
-          clock.current = { start: performance.now(), once: true, onEnd: () => rec.stop() };
+          clock.current = { start: performance.now(), once: true, onEnd: () => rec.stop(), paused: false, pausedT: 0 };
           rec.start(250);
         }),
     }),

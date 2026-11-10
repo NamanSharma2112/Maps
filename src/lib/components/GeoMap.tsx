@@ -8,10 +8,11 @@ import { createColorScale, formatNumber } from "../utils/scale";
 import type { ScaleType } from "../utils/scale";
 import { useElementSize, useReducedMotion } from "../utils/hooks";
 import { cx } from "../utils/cx";
-import type { MapArc, MapMarker } from "../types";
+import type { MapArc, MapBubble, MapMarker } from "../types";
 import { Tooltip } from "./Tooltip";
 import { MapLegend } from "./MapLegend";
 import { MapControls } from "./MapControls";
+import { MapSkeleton } from "./MapSkeleton";
 
 /** Props shared by WorldMap, IndiaMap and ContinentMap. */
 export interface BaseMapProps {
@@ -34,6 +35,8 @@ export interface BaseMapProps {
   markerPulse?: "always" | "hover" | "none";
   /** Show a legend for `data`. Pass a string to title it. */
   legend?: boolean | string;
+  /** Corner for the legend. Default "bottom-left". */
+  legendPosition?: "bottom-left" | "top-left";
   /** Scroll to zoom, drag to pan, click a region to fly to it. */
   zoomable?: boolean;
   /** Zoom buttons (defaults to `zoomable`). */
@@ -50,8 +53,18 @@ export interface BaseMapProps {
   interactive?: boolean;
   /** Seconds for one arc to travel. Default 2.8. */
   arcDuration?: number;
+  /** What travels along each arc. Default "dot". */
+  arcVehicle?: "dot" | "plane";
+  /** Proportional symbols: circle area (or spike height) scales with value. */
+  bubbles?: MapBubble[];
+  /** Default "circle". */
+  bubbleStyle?: "circle" | "spike";
+  /** Largest bubble radius (or spike height / 3) in px. Default 26. */
+  bubbleSize?: number;
   /** Replace the default tooltip content. */
   renderTooltip?: (region: Region) => ReactNode;
+  /** Show a skeleton instead of the map, e.g. while your data loads. */
+  loading?: boolean;
   className?: string;
   style?: CSSProperties;
   "aria-label"?: string;
@@ -76,6 +89,8 @@ export interface GeoMapProps extends BaseMapProps {
   attribution?: string;
   /** Inner padding around the fitted area, as a fraction of the width. */
   fitPadding?: number;
+  /** Fill for regions without data (defaults to the land or dot token). */
+  regionFill?: string;
 }
 
 interface Transform { k: number; x: number; y: number }
@@ -106,6 +121,7 @@ export function GeoMap({
   labelOf = (r) => r.id,
   attribution,
   fitPadding = 0,
+  regionFill,
   variant = "solid",
   data,
   scale = "quantile",
@@ -117,6 +133,7 @@ export function GeoMap({
   arcs = [],
   markerPulse = "always",
   legend = false,
+  legendPosition = "bottom-left",
   zoomable = false,
   controls,
   maxZoom = 8,
@@ -126,7 +143,12 @@ export function GeoMap({
   dotGap = 7,
   interactive = true,
   arcDuration = 2.8,
+  arcVehicle = "dot",
+  bubbles = [],
+  bubbleStyle = "circle",
+  bubbleSize = 26,
   renderTooltip,
+  loading = false,
   className,
   style,
   "aria-label": ariaLabel = "Map",
@@ -278,7 +300,7 @@ export function GeoMap({
   const [panning, setPanning] = useState(false);
 
   // ── hover ──────────────────────────────────────────────────
-  const [hover, setHover] = useState<{ kind: "region" | "marker"; i: number; x: number; y: number } | null>(null);
+  const [hover, setHover] = useState<{ kind: "region" | "marker" | "bubble"; i: number; x: number; y: number } | null>(null);
   const localPoint = (e: { clientX: number; clientY: number }) => {
     const rect = wrapRef.current!.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -337,7 +359,8 @@ export function GeoMap({
 
   // ── render helpers ─────────────────────────────────────────
   const fillOf = (i: number) =>
-    colorScale?.colorOf(values?.[i]) ?? (variant === "dots" ? "var(--mr-dot)" : variant === "outline" ? "transparent" : "var(--mr-land)");
+    colorScale?.colorOf(values?.[i]) ??
+    (variant === "outline" ? "transparent" : regionFill ?? (variant === "dots" ? "var(--mr-dot)" : "var(--mr-land)"));
   const hoverRegion = hover?.kind === "region" ? hover.i : -1;
   const canClick = interactive && (!!onRegionClick || zoomable);
   const project = (lng: number, lat: number) => {
@@ -368,6 +391,16 @@ export function GeoMap({
 
   const tooltip = (() => {
     if (!hover || !interactive) return null;
+    if (hover.kind === "bubble") {
+      const b = bubbles[hover.i];
+      const p = b && project(b.lng, b.lat);
+      if (!p) return null;
+      return (
+        <Tooltip x={p.x} y={p.y - (bubbleStyle === "spike" ? 0 : 6)} title={b.label ?? "Value"} swatch={b.color ?? "var(--mr-accent)"}>
+          <div className="mr-tooltip__row"><span>{valueLabel ?? "Value"}</span><b>{formatValue(b.value)}</b></div>
+        </Tooltip>
+      );
+    }
     if (hover.kind === "marker") {
       const m = markers[hover.i];
       const p = m && project(m.lng, m.lat);
@@ -412,7 +445,10 @@ export function GeoMap({
       className={cx("mr-root mr-map", variant === "outline" && "is-outline", context.length > 0 && "has-context", attribution && "has-attribution", zoomable && "is-zoomable", panning && "is-panning", hoverRegion >= 0 && "has-hover", className)}
       style={{ aspectRatio: String(aspect), ...style }}
     >
-      {width > 0 && (
+      {(loading || width === 0 || (variant === "dots" && !dots)) && (
+        <MapSkeleton aspect={aspect} style={{ position: "absolute", inset: 0 }} />
+      )}
+      {width > 0 && !loading && (
         <svg
           ref={svgRef}
           width={width}
@@ -474,7 +510,38 @@ export function GeoMap({
               ) : null,
             )}
 
-          {arcs.length > 0 && <ArcLayer arcs={arcs} project={project} duration={arcDuration} reduced={reduced} />}
+          {bubbles.length > 0 && (() => {
+            const max = Math.max(...bubbles.map((b) => Math.abs(b.value)), 1);
+            return (
+              <g className="mr-bubbles">
+                {[...bubbles.map((b, i) => ({ b, i }))]
+                  .sort((a, z) => Math.abs(z.b.value) - Math.abs(a.b.value))
+                  .map(({ b, i }) => {
+                    const p = project(b.lng, b.lat);
+                    if (!p) return null;
+                    const color = b.color ?? "var(--mr-accent)";
+                    const ev = interactive
+                      ? { onPointerEnter: () => setHover({ kind: "bubble", i, x: p.x, y: p.y }), onPointerLeave: clearHover }
+                      : {};
+                    if (bubbleStyle === "spike") {
+                      const h = Math.sqrt(Math.abs(b.value) / max) * bubbleSize * 3;
+                      const w = Math.max(3, bubbleSize * 0.28);
+                      return (
+                        <path key={i} className="mr-spike" d={`M${r2(p.x - w)} ${r2(p.y)}L${r2(p.x)} ${r2(p.y - h)}L${r2(p.x + w)} ${r2(p.y)}Z`}
+                          style={{ fill: color, stroke: color, animationDelay: `${(i % 20) * 40}ms` }} {...ev} />
+                      );
+                    }
+                    const r = Math.max(2, Math.sqrt(Math.abs(b.value) / max) * bubbleSize);
+                    return (
+                      <circle key={i} className="mr-bubble" cx={r2(p.x)} cy={r2(p.y)} r={r2(r)}
+                        style={{ fill: color, stroke: color, animationDelay: `${(i % 20) * 40}ms` }} {...ev} />
+                    );
+                  })}
+              </g>
+            );
+          })()}
+
+          {arcs.length > 0 && <ArcLayer arcs={arcs} project={project} duration={arcDuration} reduced={reduced} vehicle={arcVehicle} />}
 
           {markers.map((m, i) => {
             const p = project(m.lng, m.lat);
@@ -515,7 +582,7 @@ export function GeoMap({
       {tooltip}
 
       {legend && colorScale && (
-        <div className="mr-map__legend">
+        <div className={cx("mr-map__legend", legendPosition === "top-left" && "is-top")}>
           <MapLegend
             title={typeof legend === "string" ? legend : valueLabel}
             colors={colorScale.colors}
@@ -550,11 +617,15 @@ interface ArcLayerProps {
   project: (lng: number, lat: number) => { x: number; y: number } | null;
   duration: number;
   reduced: boolean;
+  vehicle: "dot" | "plane";
 }
 
-function ArcLayer({ arcs, project, duration, reduced }: ArcLayerProps) {
+/** A small plane pointing along +x, centred on the origin. */
+const PLANE_PATH = "M7.5 0L2.2 -1.2L-1 -6.4L-2.9 -6.4L-1 -1.3L-4.8 -1.2L-6.3 -3.4L-7.4 -3.4L-6.4 0L-7.4 3.4L-6.3 3.4L-4.8 1.2L-1 1.3L-2.9 6.4L-1 6.4L2.2 1.2Z";
+
+function ArcLayer({ arcs, project, duration, reduced, vehicle }: ArcLayerProps) {
   const trails = useRef<(SVGPathElement | null)[]>([]);
-  const heads = useRef<(SVGCircleElement | null)[]>([]);
+  const heads = useRef<(SVGGElement | null)[]>([]);
   const ripples = useRef<(SVGCircleElement | null)[]>([]);
   const startRef = useRef(typeof performance !== "undefined" ? performance.now() : 0);
 
@@ -602,8 +673,10 @@ function ArcLayer({ arcs, project, duration, reduced }: ArcLayerProps) {
           head.style.opacity = show ? "1" : "0";
           if (show) {
             const pt = trail.getPointAtLength(headP * L);
-            head.setAttribute("cx", String(pt.x));
-            head.setAttribute("cy", String(pt.y));
+            const ahead = trail.getPointAtLength(Math.min(L, headP * L + 1));
+            const behind = trail.getPointAtLength(Math.max(0, headP * L - 1));
+            const angle = (Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180) / Math.PI;
+            head.setAttribute("transform", `translate(${pt.x} ${pt.y}) rotate(${angle})`);
           }
         }
         if (ripple) {
@@ -634,7 +707,13 @@ function ArcLayer({ arcs, project, duration, reduced }: ArcLayerProps) {
             />
             {!reduced && (
               <>
-                <circle ref={(el) => { heads.current[i] = el; }} r={2.25} style={{ fill: color, opacity: 0 }} />
+                <g ref={(el) => { heads.current[i] = el; }} style={{ opacity: 0 }}>
+                  {vehicle === "plane" ? (
+                    <path d={PLANE_PATH} className="mr-arc__plane" style={{ stroke: color }} />
+                  ) : (
+                    <circle r={2.25} style={{ fill: color }} />
+                  )}
+                </g>
                 <circle ref={(el) => { ripples.current[i] = el; }} cx={g.end.x} cy={g.end.y} r={3} className="mr-arc__ripple" style={{ stroke: color, opacity: 0 }} />
               </>
             )}

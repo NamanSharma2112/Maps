@@ -18,12 +18,14 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { geoArea, geoDistance } from "d3-geo";
+import { feature as topoFeature } from "topojson-client";
 
 const require = createRequire(import.meta.url);
 const tmp = mkdtempSync(join(tmpdir(), "meridian-"));
 const f = (name) => join(tmp, name);
 const read = (name) => JSON.parse(readFileSync(f(name), "utf8"));
-const world = require.resolve("world-atlas/countries-110m.json");
+const source = require.resolve("world-atlas/countries-50m.json");
+const world = new URL("../src/lib/data/world-50m.topo.json", import.meta.url).pathname;
 const india = new URL("../src/lib/data/india-states.topo.json", import.meta.url).pathname;
 const out = new URL("../src/lib/data/south-asia.topo.json", import.meta.url).pathname;
 
@@ -32,11 +34,36 @@ const R = 6371.0088;
 const km2 = (coords) => { const a = geoArea({ type: "Polygon", coordinates: coords }); return Math.min(a, 4 * Math.PI - a) * R * R; };
 const NEIGHBOURS = ["Pakistan", "China", "Nepal", "Bhutan", "Bangladesh", "Myanmar", "Afghanistan", "Sri Lanka"];
 
+// 0. base world: Natural Earth 1:50m, lightly simplified (topology kept, so shared borders stay shared)
+await mapshaper.runCommands(
+  `-i ${source} -target countries -simplify 55% keep-shapes -o format=topojson id-field=id quantization=100000 ${world}`,
+);
+{
+  const t = JSON.parse(readFileSync(world, "utf8"));
+  delete t.objects.land;
+  // simplification can flip a tiny ring that touches the antimeridian; d3 then reads it as
+  // "the whole globe minus the island". Reverse any such ring back.
+  let flipped = 0;
+  for (const g of t.objects.countries.geometries) {
+    g.properties = { name: g.properties.name };
+    const polys = g.type === "Polygon" ? [g.arcs] : g.type === "MultiPolygon" ? g.arcs : [];
+    for (const poly of polys) {
+      const probe = { type: "Polygon", arcs: poly };
+      if (geoArea(topoFeature(t, probe)) > 2 * Math.PI) {
+        for (let r = 0; r < poly.length; r++) poly[r] = poly[r].slice().reverse().map((i) => ~i);
+        flipped++;
+      }
+    }
+  }
+  writeFileSync(world, JSON.stringify(t));
+  console.log(`base world: ${t.objects.countries.geometries.length} countries, ${flipped} flipped ring(s) fixed`);
+}
+
 // 1. official India
 await mapshaper.runCommands(`-i ${india} -dissolve -o format=geojson ${f("india.json")}`);
 // 2. everything else, with India's official area cut out
 await mapshaper.runCommands(
-  `-i ${world} -target countries -filter 'name !== "India"' -erase ${f("india.json")} -o format=geojson ${f("rest.json")}`,
+  `-i ${world} -target countries -filter 'name !== "India" && name !== "Siachen Glacier"' -erase ${f("india.json")} -o format=geojson ${f("rest.json")}`,
 );
 // 3a. land Natural Earth called India that falls outside the official line
 await mapshaper.runCommands(

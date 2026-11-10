@@ -96,3 +96,20 @@ describe("color scale", () => {
     expect(s.colorOf(undefined)).toBeUndefined();
   });
 });
+
+describe("cities", () => {
+  it("every city sits in (or just off the coast of) its country", async () => {
+    const { CITIES } = await import("./data/cities");
+    const c = getCountryRegions();
+    const misplaced = CITIES.filter((city) => {
+      const i = locate(c, city.lng, city.lat);
+      return i >= 0 && c[i].name !== city.country; // -1 = coastal point outside the 1:110m outline, allowed
+    }).map((x) => `${x.name} → ${c[locate(c, x.lng, x.lat)].name}`);
+    expect(misplaced).toEqual([]);
+  });
+  it("uses country names the maps know", async () => {
+    const { CITIES } = await import("./data/cities");
+    const names = new Set(getCountryRegions().map((r) => r.name));
+    expect(CITIES.filter((x) => !names.has(x.country)).map((x) => x.country)).toEqual([]);
+  });
+});

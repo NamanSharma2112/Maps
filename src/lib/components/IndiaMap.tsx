@@ -20,6 +20,7 @@ const makeProjection = () => geoConicEqualArea().parallels([12, 28]).rotate([-82
 
 /** India's 28 states and 8 union territories. Keys: state name or ISO code ("MH", "KA", …). */
 export function IndiaMap({
+  legendPosition = "top-left",
   labels = false,
   neighbours = true,
   attribution = true,
@@ -46,6 +47,7 @@ export function IndiaMap({
       context={context}
       projection={makeProjection}
       fit={fit}
+      legendPosition={legendPosition}
       labels={labels}
       fitPadding={0.04}
       attribution={attribution ? INDIA_ATTRIBUTION : undefined}

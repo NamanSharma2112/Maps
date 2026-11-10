@@ -31,3 +31,11 @@ export interface MapArc {
 }
 
 export type MapVariant = "dots" | "solid" | "outline";
+
+/** A proportional symbol: circle area (or spike height) scales with `value`. */
+export interface MapBubble extends LatLng {
+  value: number;
+  label?: string;
+  /** Any CSS color. Defaults to the theme accent. */
+  color?: string;
+}

@@ -8,6 +8,7 @@ import { useElementSize, useInView, useReducedMotion } from "../utils/hooks";
 import { cx } from "../utils/cx";
 import type { LatLng, MapArc, MapMarker, MapVariant } from "../types";
 import { Tooltip } from "./Tooltip";
+import { MapSkeleton } from "./MapSkeleton";
 
 export interface GlobeProps {
   /** Diameter in px. Omit to fill the container's width. */
@@ -37,6 +38,8 @@ export interface GlobeProps {
   /** Draw marker labels on the globe. Default false (labels show in tooltips). */
   showLabels?: boolean;
   onMarkerClick?: (marker: MapMarker) => void;
+  /** Show a skeleton instead of the globe, e.g. while your data loads. */
+  loading?: boolean;
   className?: string;
   style?: CSSProperties;
   "aria-label"?: string;
@@ -70,6 +73,7 @@ export function Globe({
   arcDuration = 3.2,
   showLabels = false,
   onMarkerClick,
+  loading = false,
   className,
   style,
   "aria-label": ariaLabel = "Interactive globe",
@@ -147,6 +151,7 @@ export function Globe({
 
     const pad = diameter * (atmosphere ? 0.075 : 0.012);
     const R = diameter / 2 - pad;
+    if (R < 4) return; // container not laid out yet
     const c = diameter / 2;
 
     let raf = 0;
@@ -478,8 +483,10 @@ export function Globe({
       className={cx("mr-root mr-globe", dragging && "is-dragging", draggable && "is-draggable", hover && onMarkerClick && "is-pointing", className)}
       style={{ ...(size ? { width: size } : null), ...style }}
     >
+      {(loading || diameter === 0) && <MapSkeleton shape="globe" label="Loading globe" style={{ position: "absolute", inset: 0 }} />}
       <canvas
         ref={canvasRef}
+        hidden={loading}
         role="img"
         aria-label={ariaLabel}
         style={{ width: diameter, height: diameter }}
