@@ -39,6 +39,10 @@ function useTheme() {
   const [dark, setDark] = useState(false);
   useEffect(() => {
     const root = document.documentElement;
+    try {
+      const saved = localStorage.getItem("meridian-theme");
+      if ((saved === "dark" || saved === "light") && !root.getAttribute("data-theme")) root.setAttribute("data-theme", saved);
+    } catch { /* storage blocked */ }
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const sync = () => {
       const explicit = root.getAttribute("data-theme");
@@ -52,7 +56,11 @@ function useTheme() {
     mo.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
     return () => { mq.removeEventListener("change", sync); mo.disconnect(); };
   }, []);
-  const toggle = () => document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+  const toggle = () => {
+    const next = dark ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("meridian-theme", next); } catch { /* not remembered; fine */ }
+  };
   return { dark, toggle };
 }
 

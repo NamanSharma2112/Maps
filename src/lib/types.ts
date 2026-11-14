@@ -12,6 +12,8 @@ export interface MapMarker extends LatLng {
   color?: string;
   /** Dot radius in px. Default 3.5. */
   size?: number;
+  /** Marker shape on flat maps. Default "circle". */
+  shape?: "circle" | "square" | "diamond" | "pin";
   /** Animated pulse ring. Default true. */
   pulse?: boolean;
   /** Where the label sits relative to the dot on flat maps. Default "right". */

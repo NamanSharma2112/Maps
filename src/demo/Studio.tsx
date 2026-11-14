@@ -126,6 +126,26 @@ export function Studio() {
   const map = useRef<VideoMapHandle>(null);
   const lastTick = useRef(0);
   const scrubbing = useRef<{ wasPlaying: boolean } | null>(null);
+  const timeRef = useRef(0);
+  timeRef.current = time;
+
+  // keyboard: Space play/pause, ←/→ step one second, R replay (ignored while typing)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) || el.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.code === "Space") { e.preventDefault(); setPlaying((x) => !x); }
+      else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        const v = Math.max(0, timeRef.current + (e.key === "ArrowRight" ? 1 : -1));
+        map.current?.seek(v);
+        setTime(v);
+      } else if (e.key === "r" || e.key === "R") { map.current?.replay(); setPlaying(true); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const startScrub = () => { if (!scrubbing.current) { scrubbing.current = { wasPlaying: playing }; setPlaying(false); } };
   const endScrub = () => { const s = scrubbing.current; scrubbing.current = null; if (s?.wasPlaying) setPlaying(true); };
 
@@ -251,6 +271,7 @@ ${stops.map((s) => `    { country: "${s.country}"${s.at ? `, at: { lat: ${s.at.l
                     <div className="stop__tools">
                       <button type="button" className="tool" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move stop ${i + 1} up`}><Icon d="M8 12.5v-9M4.5 7L8 3.5 11.5 7" /></button>
                       <button type="button" className="tool" onClick={() => move(i, 1)} disabled={i === p.stops.length - 1} aria-label={`Move stop ${i + 1} down`}><Icon d="M8 3.5v9M4.5 9L8 12.5 11.5 9" /></button>
+                      <button type="button" className="tool" onClick={() => set("stops", [...p.stops.slice(0, i + 1), { ...s, id: uid() }, ...p.stops.slice(i + 1)])} aria-label={`Duplicate stop ${i + 1}`}><Icon d="M5.5 5.5h7v7h-7zM3.5 10.5v-7h7" /></button>
                       <button type="button" className="tool" onClick={() => set("stops", p.stops.filter((x) => x.id !== s.id))} disabled={p.stops.length <= 1} aria-label={`Remove stop ${i + 1}`}><Icon d="M4 4l8 8M12 4l-8 8" /></button>
                     </div>
                   </div>
@@ -422,7 +443,7 @@ ${stops.map((s) => `    { country: "${s.country}"${s.at ? `, at: { lat: ${s.at.l
 
       {/* ── status bar ── */}
       <footer className="studio__status" aria-live="polite">
-        <span>{status || "Changes save automatically in this browser. Export plays the route once in real time."}</span>
+        <span>{status || "Saved automatically. Space: play/pause · ← →: step 1 s · R: replay"}</span>
         <span className="studio__meta">{fmtLabel.name} {p.aspect} · {p.resolution}p · {p.fps} fps · {stops.length} stops</span>
       </footer>
     </div>

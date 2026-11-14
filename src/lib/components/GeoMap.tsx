@@ -612,7 +612,19 @@ export function GeoMap({
                   <circle r={r} className={cx("mr-marker__pulse", pulse === "hover" && "on-hover")} style={{ stroke: color, animationDelay: `${(i * 0.37) % 2.4}s` }} />
                 )}
                 <circle r={r + 1.5} className="mr-marker__halo" />
-                <circle r={r} style={{ fill: color }} />
+                {m.shape === "square" ? (
+                  <rect x={-r} y={-r} width={r * 2} height={r * 2} rx={1} style={{ fill: color }} />
+                ) : m.shape === "diamond" ? (
+                  <rect x={-r} y={-r} width={r * 2} height={r * 2} rx={1} transform="rotate(45)" style={{ fill: color }} />
+                ) : m.shape === "pin" ? (
+                  <path
+                    d={`M0 0C${-r * 0.55} ${-r * 1.5} ${-r * 1.9} ${-r * 2.3} ${-r * 1.9} ${-r * 3.7}A${r * 1.9} ${r * 1.9} 0 1 1 ${r * 1.9} ${-r * 3.7}C${r * 1.9} ${-r * 2.3} ${r * 0.55} ${-r * 1.5} 0 0Z`}
+                    className="mr-marker__pin"
+                    style={{ fill: color }}
+                  />
+                ) : (
+                  <circle r={r} style={{ fill: color }} />
+                )}
                 <circle r={Math.max(10, r + 6)} fill="transparent" />
                 {m.label && markers.length <= 12 && (
                   <text

@@ -72,7 +72,7 @@ import "meridian-ui/styles.css";
 | `steps` / `colors` | `number` / `string[]` | `5` | Number of bins, or your own colors |
 | `valueLabel`, `formatValue` | | | Tooltip and legend text |
 | `legend` | `boolean \| string` | `false` | Legend for `data`; a string titles it |
-| `markers` | `MapMarker[]` | `[]` | `{ lat, lng, label?, color?, size?, pulse?, labelPosition?, description? }` |
+| `markers` | `MapMarker[]` | `[]` | `{ lat, lng, label?, color?, size?, shape?, pulse?, labelPosition?, description? }` — shape is circle, square, diamond or pin |
 | `arcs` | `MapArc[]` | `[]` | `{ from, to, color?, delay? }` |
 | `markerPulse` | `"always" \| "hover" \| "none"` | `"always"` | |
 | `zoomable` | `boolean` | `false` | Wheel zoom, drag to pan, click a region to fly to it, double-click to zoom |

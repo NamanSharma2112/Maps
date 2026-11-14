@@ -332,3 +332,5 @@
 /* nothing animates while a map is off screen */
 .mr-map:not(.is-visible) .mr-marker__pulse,
 .mr-map:not(.is-visible) .mr-enter { animation-play-state: paused; }
+
+.mr-marker__pin { stroke: var(--mr-background); stroke-width: 1.5; stroke-linejoin: round; }

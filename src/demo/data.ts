@@ -47,7 +47,7 @@ export const INDIA_POPULATION_2011: Record<string, number> = {
 };
 
 export const INDIA_CITIES: MapMarker[] = [
-  { ...C.delhi, description: "National capital" },
+  { ...C.delhi, description: "National capital", shape: "pin", size: 4 },
   { ...C.mumbai, description: "Maharashtra" },
   { ...C.bengaluru, description: "Karnataka", labelPosition: "left" },
   { lat: 13.0827, lng: 80.2707, label: "Chennai", description: "Tamil Nadu" },
