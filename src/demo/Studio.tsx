@@ -7,7 +7,7 @@ import { Code } from "./Code";
 
 /* ── project model ──────────────────────────────────────────── */
 
-type StopKind = "country" | "city";
+type StopKind = "country" | "city" | "point";
 interface StopDraft { id: string; kind: StopKind; value: string; label: string; depth: number | null }
 interface Project {
   stops: StopDraft[];
@@ -17,6 +17,7 @@ interface Project {
   routeStyle: "glow" | "dashed" | "solid" | "none"; vehicle: "plane" | "dot" | "none"; captionStyle: "lower-third" | "pill" | "none";
   flight: number; hold: number; speed: number;
   progress: boolean; vignette: boolean; showDistance: boolean;
+  watermark: string; pinLabels: boolean; loop: boolean; guides: boolean;
 }
 
 let seq = 0;
@@ -28,6 +29,7 @@ const BASE: Omit<Project, "stops" | "title" | "subtitle" | "outro"> = {
   aspect: "16:9", resolution: 1080, fps: 30, theme: "midnight", accent: "", background: "theme", variant: "solid",
   routeStyle: "glow", vehicle: "plane", captionStyle: "lower-third", flight: 1.8, hold: 1.6, speed: 1,
   progress: true, vignette: true, showDistance: true,
+  watermark: "", pinLabels: false, loop: true, guides: false,
 };
 
 const TEMPLATES: { id: string; name: string; make: () => Project }[] = [
@@ -51,6 +53,14 @@ const COUNTRY_NAMES = getCountryRegions().map((r) => r.name).filter((n) => n !==
 const CITY_NAMES = CITIES.map((c) => c.name).sort();
 
 function resolve(s: StopDraft): VideoStop | null {
+  if (s.kind === "point") {
+    // "lat, lng" in decimal degrees, e.g. 27.1751, 78.0421
+    const m = s.value.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (!m) return null;
+    const lat = Number(m[1]), lng = Number(m[2]);
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+    return { at: { lat, lng }, zoom: s.depth ?? 6, label: s.label || `${lat.toFixed(2)}°, ${lng.toFixed(2)}°` };
+  }
   if (s.kind === "city") {
     const c = findCity(s.value);
     if (!c) return null;
@@ -116,7 +126,22 @@ const THEMES: { value: VideoTheme; name: string; bg: string; land: string; accen
 /* ── studio ─────────────────────────────────────────────────── */
 
 export function Studio() {
-  const [p, setP] = useState<Project>(loadProject);
+  // project state with undo / redo; rapid edits (slider drags, typing) collapse into one step
+  const [hist, setHist] = useState(() => ({ past: [] as Project[], present: loadProject(), future: [] as Project[] }));
+  const p = hist.present;
+  const lastEdit = useRef(0);
+  const setP = (next: Project | ((x: Project) => Project)) =>
+    setHist((h) => {
+      const present = typeof next === "function" ? next(h.present) : next;
+      const now = Date.now();
+      const merge = now - lastEdit.current < 500 && h.past.length > 0;
+      lastEdit.current = now;
+      return { past: merge ? h.past : [...h.past.slice(-59), h.present], present, future: [] };
+    });
+  const undo = () => setHist((h) => (h.past.length ? { past: h.past.slice(0, -1), present: h.past[h.past.length - 1], future: [h.present, ...h.future] } : h));
+  const redo = () => setHist((h) => (h.future.length ? { past: [...h.past, h.present], present: h.future[0], future: h.future.slice(1) } : h));
+  const [paste, setPaste] = useState("");
+  const stageRef = useRef<HTMLDivElement>(null);
   const set = <K extends keyof Project>(k: K, v: Project[K]) => setP((x) => ({ ...x, [k]: v }));
   const [playing, setPlaying] = useState(true);
   const [time, setTime] = useState(0);
@@ -134,6 +159,7 @@ export function Studio() {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) || el.isContentEditable)) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === "Space") { e.preventDefault(); setPlaying((x) => !x); }
       else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
@@ -237,7 +263,12 @@ ${stops.map((s) => `    { country: "${s.country}"${s.at ? `, at: { lat: ${s.at.l
             </button>
           ))}
         </div>
+        <div className="studio__history">
+          <button type="button" className="tool tool--lg" onClick={undo} disabled={!hist.past.length} aria-label="Undo" title="Undo (Ctrl+Z)"><Icon d="M6 4.5L2.5 8 6 11.5M3 8h6.5a3.5 3.5 0 0 1 0 7H8" /></button>
+          <button type="button" className="tool tool--lg" onClick={redo} disabled={!hist.future.length} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><Icon d="M10 4.5L13.5 8 10 11.5M13 8H6.5a3.5 3.5 0 0 0 0 7H8" /></button>
+        </div>
         <div className="studio__actions">
+          <button type="button" className="sbtn" onClick={() => stageRef.current?.requestFullscreen?.().catch(() => setStatus("Fullscreen is not available here."))} title="Fullscreen preview"><Icon d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" />Full screen</button>
           <button type="button" className="sbtn" onClick={() => setShowCode((x) => !x)} aria-expanded={showCode}><Icon d="M6 4.5L2.5 8 6 11.5M10 4.5L13.5 8 10 11.5" />Code</button>
           <button type="button" className="sbtn" onClick={frame} disabled={recording || !stops.length}><Icon d="M2.5 4.5h11v8h-11zM5.5 4.5l1-2h3l1 2M8 10.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />PNG</button>
           <button type="button" className="sbtn sbtn--primary" onClick={record} disabled={recording || !stops.length}>
@@ -260,12 +291,13 @@ ${stops.map((s) => `    { country: "${s.country}"${s.at ? `, at: { lat: ${s.at.l
                     <select aria-label={`Stop ${i + 1} type`} value={s.kind} onChange={(e) => updateStop(s.id, { kind: e.target.value as StopKind, value: "" })}>
                       <option value="city">City</option>
                       <option value="country">Country</option>
+                      <option value="point">Point</option>
                     </select>
                     <input
                       aria-label={`Stop ${i + 1} ${s.kind}`}
-                      list={s.kind === "city" ? "studio-cities" : "studio-countries"}
+                      list={s.kind === "city" ? "studio-cities" : s.kind === "country" ? "studio-countries" : undefined}
                       value={s.value}
-                      placeholder={s.kind === "city" ? "Search a city…" : "Search a country…"}
+                      placeholder={s.kind === "city" ? "Search a city…" : s.kind === "country" ? "Search a country…" : "Lat, lng  e.g. 27.17, 78.04"}
                       onChange={(e) => updateStop(s.id, { value: e.target.value })}
                     />
                     <div className="stop__tools">
@@ -275,7 +307,7 @@ ${stops.map((s) => `    { country: "${s.country}"${s.at ? `, at: { lat: ${s.at.l
                       <button type="button" className="tool" onClick={() => set("stops", p.stops.filter((x) => x.id !== s.id))} disabled={p.stops.length <= 1} aria-label={`Remove stop ${i + 1}`}><Icon d="M4 4l8 8M12 4l-8 8" /></button>
                     </div>
                   </div>
-                  {!ok && s.value && <p className="stop__err">Not found. Pick a {s.kind} from the list.</p>}
+                  {!ok && s.value && <p className="stop__err">{s.kind === "point" ? "Enter latitude, longitude in degrees, like 27.17, 78.04." : `Not found. Pick a ${s.kind} from the list.`}</p>}
                   <div className="stop__row stop__row--sub">
                     <input aria-label={`Stop ${i + 1} caption`} value={s.label} placeholder="Caption" onChange={(e) => updateStop(s.id, { label: e.target.value })} />
                     <label className="depth">
@@ -307,7 +339,7 @@ ${stops.map((s) => `    { country: "${s.country}"${s.at ? `, at: { lat: ${s.at.l
 
       {/* ── centre: canvas + timeline ── */}
       <section className="studio__center" aria-label="Preview">
-        <div className={`studio__stage studio__stage--${p.aspect.replace(":", "x")}${p.background === "transparent" ? " is-checker" : ""}`}>
+        <div className={`studio__stage studio__stage--${p.aspect.replace(":", "x")}${p.background === "transparent" ? " is-checker" : ""}`} ref={stageRef}>
           {stops.length ? (
             <VideoMap
               ref={map}
@@ -332,7 +364,11 @@ ${stops.map((s) => `    { country: "${s.country}"${s.at ? `, at: { lat: ${s.at.l
               title={p.title || undefined}
               subtitle={p.subtitle || undefined}
               outro={p.outro || undefined}
+              watermark={p.watermark || undefined}
+              pinLabels={p.pinLabels}
+              loop={p.loop}
               playing={playing}
+              children={p.guides ? <div className={`guides guides--${p.aspect.replace(":", "x")}`} aria-hidden="true"><span>Safe zone</span></div> : undefined}
               onProgress={(t, d) => {
                 if (d !== duration) setDuration(d);
                 if (scrubbing.current) return; // the scrubber owns the playhead while dragging
@@ -425,6 +461,9 @@ ${stops.map((s) => `    { country: "${s.country}"${s.at ? `, at: { lat: ${s.at.l
             <Toggle checked={p.progress} onChange={(v) => set("progress", v)}>Progress bar</Toggle>
             <Toggle checked={p.vignette} onChange={(v) => set("vignette", v)}>Vignette</Toggle>
             <Toggle checked={p.showDistance} onChange={(v) => set("showDistance", v)}>Distance</Toggle>
+            <Toggle checked={p.pinLabels} onChange={(v) => set("pinLabels", v)}>Pin labels</Toggle>
+            <Toggle checked={p.loop} onChange={(v) => set("loop", v)}>Loop preview</Toggle>
+            <Toggle checked={p.guides} onChange={(v) => set("guides", v)}>Safe zones</Toggle>
           </div>
         </Panel>
 
@@ -432,6 +471,26 @@ ${stops.map((s) => `    { country: "${s.country}"${s.at ? `, at: { lat: ${s.at.l
           <Field label="Title" htmlFor="studio-title"><input id="studio-title" value={p.title} onChange={(e) => set("title", e.target.value)} placeholder="Shown at the start" /></Field>
           <Field label="Subtitle" htmlFor="studio-subtitle"><input id="studio-subtitle" value={p.subtitle} onChange={(e) => set("subtitle", e.target.value)} placeholder="Optional" /></Field>
           <Field label="End card" htmlFor="studio-outro"><input id="studio-outro" value={p.outro} onChange={(e) => set("outro", e.target.value)} placeholder="e.g. Subscribe for part 2" /></Field>
+          <Field label="Watermark" htmlFor="studio-mark"><input id="studio-mark" value={p.watermark} onChange={(e) => set("watermark", e.target.value)} placeholder="e.g. @yourchannel" /></Field>
+        </Panel>
+
+        <Panel title="Project" open={false}>
+          <div className="row-actions">
+            <button type="button" className="btn btn--sm" onClick={() => navigator.clipboard?.writeText(JSON.stringify(p)).then(() => setStatus("Project copied. Paste it here later, or send it to a teammate."), () => setStatus("Could not copy. Select the text below instead."))}>Copy project</button>
+            <button type="button" className="btn btn--sm btn--ghost" onClick={() => { setP(TEMPLATES[0].make()); setStatus("Project reset. Undo brings it back."); }}>Reset</button>
+          </div>
+          <Field label="Paste a project" htmlFor="studio-paste">
+            <textarea id="studio-paste" rows={3} value={paste} onChange={(e) => setPaste(e.target.value)} placeholder='{"stops":[…]}' />
+          </Field>
+          <button type="button" className="btn btn--sm" disabled={!paste.trim()} onClick={() => {
+            try {
+              const v = JSON.parse(paste);
+              if (!Array.isArray(v.stops)) throw new Error("no stops");
+              setP({ ...TEMPLATES[0].make(), ...v });
+              setPaste("");
+              setStatus("Project loaded.");
+            } catch { setStatus("That is not a valid project. Copy one with “Copy project” first."); }
+          }}>Load pasted project</button>
         </Panel>
 
         <Panel title="Timing" hint={duration ? fmtTime(duration) : undefined}>
@@ -443,7 +502,7 @@ ${stops.map((s) => `    { country: "${s.country}"${s.at ? `, at: { lat: ${s.at.l
 
       {/* ── status bar ── */}
       <footer className="studio__status" aria-live="polite">
-        <span>{status || "Saved automatically. Space: play/pause · ← →: step 1 s · R: replay"}</span>
+        <span>{status || "Saved automatically. Space: play/pause · ← →: step · R: replay · Ctrl+Z: undo"}</span>
         <span className="studio__meta">{fmtLabel.name} {p.aspect} · {p.resolution}p · {p.fps} fps · {stops.length} stops</span>
       </footer>
     </div>

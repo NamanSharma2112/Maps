@@ -55,6 +55,12 @@ export interface VideoMapProps {
   accent?: string;
   /** End card text shown after the last stop, e.g. "Subscribe for part 2". */
   outro?: string;
+  /** Small text in the bottom-right corner, e.g. your channel handle. */
+  watermark?: string;
+  /** Name each visited stop next to its pin. Default false. */
+  pinLabels?: boolean;
+  /** Extra elements layered over the canvas (not recorded), e.g. safe-zone guides. */
+  children?: React.ReactNode;
   /** Play or pause the preview. Default true. */
   playing?: boolean;
   /** Called every frame with the playhead and total length, in seconds. */
@@ -119,6 +125,9 @@ export const VideoMap = forwardRef<VideoMapHandle, VideoMapProps>(function Video
     subtitle,
     accent,
     outro,
+    watermark,
+    pinLabels = false,
+    children,
     playing = true,
     onProgress,
     loop = true,
@@ -338,6 +347,24 @@ export const VideoMap = forwardRef<VideoMapHandle, VideoMapProps>(function Video
 
       // ── screen-space overlays ──
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (pinLabels) {
+        ctx.font = `600 ${26 * unit}px ${font}`;
+        ctx.textBaseline = "middle";
+        ctx.lineJoin = "round";
+        shots.slice(0, cam.i + 1).forEach((s, j) => {
+          if (!(j < cam.i || cam.p >= 1) || (j === cam.i && captionStyle === "pill")) return;
+          const name = s.label.split(",")[0];
+          if (!name) return;
+          const sx = (s.x - cam.x) * cam.k + W / 2 + 22 * unit, sy = (s.y - cam.y) * cam.k + H / 2;
+          if (sx < 0 || sx > W || sy < 0 || sy > H) return;
+          ctx.globalAlpha = fadeIn;
+          ctx.lineWidth = 7 * unit;
+          ctx.strokeStyle = bg ?? "rgba(0,0,0,.7)";
+          ctx.strokeText(name, sx, sy);
+          ctx.fillStyle = overlayText;
+          ctx.fillText(name, sx, sy);
+        });
+      }
       ctx.globalAlpha = 1;
       if (vignette && bg) {
         const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
@@ -424,6 +451,17 @@ export const VideoMap = forwardRef<VideoMapHandle, VideoMapProps>(function Video
         }
       }
 
+      if (watermark) {
+        ctx.globalAlpha = 0.7;
+        ctx.fillStyle = overlayText;
+        ctx.font = `500 ${26 * unit}px ${font}`;
+        ctx.textAlign = "right";
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText(watermark, W - 64 * unit, H - 64 * unit * (progress ? 1.25 : 0.8) - (portrait ? 200 * unit : 0));
+        ctx.textAlign = "start";
+        ctx.globalAlpha = 1;
+      }
+
       if (progress && shots.length) {
         const y = H - m * 0.6, x0 = m, x1 = W - m;
         const p = clamp((t - INTRO) / (shots.length * seg), 0, 1);
@@ -447,7 +485,7 @@ export const VideoMap = forwardRef<VideoMapHandle, VideoMapProps>(function Video
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [scene, W, H, unit, portrait, seg, flight, hold, duration, outroLen, speed, loop, theme, accent, outro, background, routeStyle, vehicle, captionStyle, showDistance, progress, vignette, title, subtitle]);
+  }, [scene, W, H, unit, portrait, seg, flight, hold, duration, outroLen, speed, loop, theme, accent, outro, watermark, pinLabels, background, routeStyle, vehicle, captionStyle, showDistance, progress, vignette, title, subtitle]);
 
   useImperativeHandle(
     ref,
@@ -484,6 +522,7 @@ export const VideoMap = forwardRef<VideoMapHandle, VideoMapProps>(function Video
   return (
     <div ref={wrapRef} className={cx("mr-root mr-video", className)} style={{ aspectRatio: `${W} / ${H}`, ...style }}>
       <canvas ref={canvasRef} width={W} height={H} role="img" aria-label={title ?? "Animated map"} />
+      {children}
     </div>
   );
 });
